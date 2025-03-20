@@ -3,7 +3,7 @@ import { getModels } from '../api';
 import { useNavigate } from 'react-router-dom';
 import './HomePage.css';
 
-function HomePage(){
+function HomePage() {
   const [models, setModels] = useState([]);
   const navigate = useNavigate();
 
