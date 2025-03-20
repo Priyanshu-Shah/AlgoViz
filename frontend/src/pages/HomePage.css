@@ -1,0 +1,43 @@
+.homepage {
+    text-align: center;
+    padding: 20px;
+  }
+  
+  .homepage-title {
+    font-size: 2rem;
+    margin-bottom: 20px;
+  }
+  
+  .model-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 20px;
+  }
+  
+  .model-card {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  
+  .model-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  .model-image {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 4px;
+  }
+  
+  .model-name {
+    margin-top: 10px;
+    font-size: 1.1rem;
+    font-weight: bold;
+  }

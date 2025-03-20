@@ -1,12 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const modelRoutes = require('./routes/modelRoutes');
+const linregRoutes = require('./routes/linregRoutes');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 app.use('/models', modelRoutes);
+app.use('/models/lin-reg', linregRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

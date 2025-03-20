@@ -1,27 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { getModels } from '../api';
-import { useNavigate } from 'react-router-dom';
-
-function LinReg() {
-  const [models, setModels] = useState([]);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    getModels().then(data => setModels(data));
-  }, []);
-
-  return (
-    <div>
-      <h1>Machine Learning Models</h1>
-      <ul>
-        {models.map(model => (
-          <li key={model.id} onClick={() => navigate(`/${model.id}`)}>
-            {model.name}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+function LinReg(data) {
+  // Add your logistic regression logic here
+  return { result: 'lin-reg' };
 }
 
-export default LinReg;
+module.exports = LinReg;
