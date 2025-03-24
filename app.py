@@ -90,7 +90,6 @@ def root():
         ]
     })
 
-# Linear regression endpoints
 @app.route('/api/linear-regression', methods=['POST'])
 def linear_regression():
     data = request.json
@@ -116,10 +115,24 @@ def linear_regression():
         
         if len(data['X']) != len(data['y']):
             return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
-            
-        # Call the model
-        print("Calling linear regression model function")
-        result = run_linear_regression(data)
+        
+        # Get alpha parameter with default value
+        alpha = data.get('alpha', 0.01)
+        
+        # Get iterations parameter with default value
+        iterations = data.get('iterations', 100)
+        
+        # Ensure iterations is an integer
+        try:
+            iterations = int(iterations)
+            if iterations < 1:
+                iterations = 100  # Default if invalid
+        except (ValueError, TypeError):
+            iterations = 100  # Default if invalid
+
+         # Call the model with alpha and iterations parameters
+        print(f"Calling linear regression model function with alpha={alpha}, iterations={iterations}")
+        result = run_linear_regression(data, alpha=alpha, iterations=iterations)
         
         # Check if the result is None (which would cause JSON serialization issues)
         if result is None:
@@ -138,10 +151,8 @@ def linear_regression():
         sanitized_result = {
             'coefficient': float(result.get('coefficient', 0)),
             'intercept': float(result.get('intercept', 0)),
-            'mse_train': float(result.get('mse_train', 0)),
-            'r2_train': float(result.get('r2_train', 0)),
-            'mse_test': float(result.get('mse_test', 0)),
-            'r2_test': float(result.get('r2_test', 0)),
+            'mse': float(result.get('mse', 0)),  # Change from mse_train
+            'r2': float(result.get('r2', 0)),    # Change from r2_train
             'equation': result.get('equation', 'y = 0x + 0')
         }
         

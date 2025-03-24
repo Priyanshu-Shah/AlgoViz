@@ -12,12 +12,14 @@ function LinReg() {
   const [error, setError] = useState(null);
   const [backendStatus, setBackendStatus] = useState("checking");
   const [sampleLoading, setSampleLoading] = useState(false);
+  const [alpha, setAlpha] = useState(0.01);
+  const [iterations, setIterations] = useState(100); // Default iterations value
+  const [isHighAlpha, setIsHighAlpha] = useState(false);
 
   // Check backend health on component mount
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        // console.log("Checking backend health at: " + Process.env.API_URL + "/health");
         const health = await checkHealth();
         console.log("Backend health response:", health);
         setBackendStatus(health.status === "healthy" ? "connected" : "disconnected");
@@ -30,6 +32,11 @@ function LinReg() {
     
     checkBackendHealth();
   }, []);
+
+  // Check if alpha is too high
+  useEffect(() => {
+    setIsHighAlpha(alpha > 0.1);
+  }, [alpha]);
 
   const handleAddPair = () => {
     setDataPairs([...dataPairs, { x: '', y: '' }]);
@@ -122,7 +129,9 @@ function LinReg() {
       // Log the data before sending to API for debugging
       console.log('Preparing data for API:', {
         X: dataPairs.map(pair => parseFloat(pair.x.trim())),
-        y: dataPairs.map(pair => parseFloat(pair.y.trim()))
+        y: dataPairs.map(pair => parseFloat(pair.y.trim())),
+        alpha: alpha,
+        iterations: iterations
       });
       
       // Prepare data for the API with extra validation
@@ -136,21 +145,40 @@ function LinReg() {
           const y = parseFloat(pair.y.trim());
           if (isNaN(y)) throw new Error(`Invalid Y value: ${pair.y}`);
           return y;
-        })
+        }),
+        alpha: alpha,
+        iterations: iterations
       };
 
       console.log('Calling API endpoint...');
       const response = await runLinearRegression(apiData);
-      console.log('API response received:', response);
       
       if (response.error) {
         throw new Error(response.error);
       }
       
       setResults(response);
+      console.log('Results state set to:', response);
     } catch (err) {
       console.error('Error details:', err);
-      setError(`Error: ${err.message || 'An error occurred while running the model. Please try again.'}`);
+      
+      // Check if the error is related to learning rate
+      const errorMessage = err.message || 'An error occurred while running the model.';
+      
+      if (
+        errorMessage.toLowerCase().includes('diverg') || 
+        errorMessage.toLowerCase().includes('explod') ||
+        errorMessage.toLowerCase().includes('inf') ||
+        errorMessage.toLowerCase().includes('nan') ||
+        errorMessage.toLowerCase().includes('overflow')
+      ) {
+        setError(
+          `Error: Gradient descent failed to converge. This is likely due to a learning rate (${alpha.toFixed(4)}) that is too high. ` +
+          `Try reducing the learning rate to a value below 1.0.`
+        );
+      } else {
+        setError(`Error: ${errorMessage} Please try again.`);
+      }
     } finally {
       setLoading(false);
     }
@@ -192,7 +220,12 @@ function LinReg() {
         </div>
       )}
 
-      <div className="content-container">
+      <div className="content-container" style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr', 
+        gap: '2rem',
+        alignItems: 'start'
+      }}>
         <div className="input-section">
           <div className="section-header">
             <h2 className="section-title">Input Data</h2>
@@ -250,6 +283,86 @@ function LinReg() {
             </button>
           </div>
           
+          {/* Learning Rate Slider */}
+          <div style={{ marginTop: '2rem' }}>
+            <label htmlFor="alpha-slider" style={{ 
+              display: 'block', 
+              marginBottom: '0.5rem', 
+              fontWeight: '500', 
+              color: '#4b5563' 
+            }}>
+              Learning Rate (Alpha): {alpha.toFixed(4)}
+            </label>
+            <input
+              id="alpha-slider"
+              type="range"
+              min="0.0000"
+              max="0.12"
+              step="0.0001"
+              value={alpha}
+              onChange={(e) => setAlpha(parseFloat(e.target.value))}
+              style={{ width: '100%' }}
+            />
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              fontSize: '0.8rem', 
+              color: '#6b7280',
+              marginTop: '0.25rem'
+            }}>
+              <span>0.0000 (Slow learning)</span>
+              <span>10 (Fast or Exploding learning)</span>
+            </div>
+            
+            {/* Add warning message for high learning rate */}
+            {isHighAlpha && (
+              <div style={{
+                marginTop: '0.5rem',
+                padding: '0.5rem',
+                backgroundColor: '#FEF2F2',
+                borderRadius: '0.375rem',
+                borderLeft: '3px solid #EF4444',
+                color: '#B91C1C',
+                fontSize: '0.875rem'
+              }}>
+                <strong>Warning:</strong> High learning rates may cause exploding gradients and divergence. 
+                Values below 1.0 are recommended for most datasets.
+              </div>
+            )}
+          </div>
+          
+          {/* Iterations Slider */}
+          <div style={{ marginTop: '2rem' }}>
+            <label htmlFor="iterations-slider" style={{ 
+              display: 'block', 
+              marginBottom: '0.5rem', 
+              fontWeight: '500', 
+              color: '#4b5563' 
+            }}>
+              Max Iterations: {iterations}
+            </label>
+            <input
+              id="iterations-slider"
+              type="range"
+              min="1"
+              max="500"
+              step="1"
+              value={iterations} 
+              onChange={(e) => setIterations(parseInt(e.target.value))}
+              style={{ width: '100%' }}
+            />
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              fontSize: '0.8rem', 
+              color: '#6b7280',
+              marginTop: '0.25rem'
+            }}>
+              <span>1 (Fast but might not converge)</span>
+              <span>500 (Slower but more accurate)</span>
+            </div>
+          </div>
+          
           <div style={{ marginTop: '2rem' }}>
             <button 
               className="action-button" 
@@ -263,82 +376,60 @@ function LinReg() {
 
         <div className="results-section">
           <h2 className="section-title">Results</h2>
-          
           {loading ? (
             <div className="loading-spinner">
               <div className="spinner"></div>
             </div>
           ) : results ? (
-            <div className="results-content">
-              {results.error ? (
-                <div className="error-message">
-                  <p>Error from server: {results.error}</p>
-                  {results.details && <pre>{JSON.stringify(results.details, null, 2)}</pre>}
+            <div className="results-content" style={{ padding: '20px', background: '#f9fafb', borderRadius: '8px' }}>
+              <div className="metric-card">
+                <div className="metric-title">Model Equation</div>
+                <div className="metric-value">
+                  {`y = ${results.coefficient !== undefined ? results.coefficient.toFixed(4) : '?'} × x + ${results.intercept !== undefined ? results.intercept.toFixed(4) : '?'}`}
                 </div>
-              ) : (
-                <>
-                  <div className="metric-card">
-                    <div className="metric-title">Model Equation</div>
-                    <div className="metric-value">{results.equation || 'N/A'}</div>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                <div className="metric-card">
+                  <div className="metric-title">Coefficient</div>
+                  <div className="metric-value">
+                    {results.coefficient !== undefined ? results.coefficient.toFixed(4) : 'N/A'}
                   </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                    <div className="metric-card">
-                      <div className="metric-title">Coefficient</div>
-                      <div className="metric-value">
-                        {results.coefficient !== undefined ? results.coefficient.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">Intercept</div>
-                      <div className="metric-value">
-                        {results.intercept !== undefined ? results.intercept.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">R² Score (Train)</div>
-                      <div className="metric-value">
-                        {results.r2_train !== undefined ? results.r2_train.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">R² Score (Test)</div>
-                      <div className="metric-value">
-                        {results.r2_test !== undefined ? results.r2_test.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">MSE (Train)</div>
-                      <div className="metric-value">
-                        {results.mse_train !== undefined ? results.mse_train.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">MSE (Test)</div>
-                      <div className="metric-value">
-                        {results.mse_test !== undefined ? results.mse_test.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
+                </div>
+                
+                <div className="metric-card">
+                  <div className="metric-title">Intercept</div>
+                  <div className="metric-value">
+                    {results.intercept !== undefined ? results.intercept.toFixed(4) : 'N/A'}
                   </div>
-                  
-                  <div className="visualization-container">
-                    <h3 style={{ marginBottom: '1rem' }}>Visualization</h3>
-                    {results.plot ? (
-                      <img 
-                        src={`data:image/png;base64,${results.plot}`} 
-                        alt="Linear Regression Plot" 
-                      />
-                    ) : (
-                      <p>No visualization available</p>
-                    )}
+                </div>
+                
+                <div className="metric-card">
+                  <div className="metric-title">R² Score</div>
+                  <div className="metric-value">
+                    {results.r2 !== undefined ? results.r2.toFixed(4) : 'N/A'}
                   </div>
-                </>
-              )}
+                </div>
+                
+                <div className="metric-card">
+                  <div className="metric-title">Mean Squared Error</div>
+                  <div className="metric-value">
+                    {results.mse !== undefined ? results.mse.toFixed(4) : 'N/A'}
+                  </div>
+                </div>
+              </div>
+              <div className="visualization-container">
+                <h3>Visualization:</h3>
+                {results.plot ? (
+                  <img 
+                    src={`data:image/png;base64,${results.plot}`} 
+                    alt="Linear Regression Plot" 
+                    style={{ maxWidth: '100%', border: '1px solid #e5e7eb' }}
+                  />
+                ) : (
+                  <p>No plot data found in response</p>
+                )}
+              </div>
             </div>
           ) : (
             <div style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>
