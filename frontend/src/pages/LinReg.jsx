@@ -13,6 +13,7 @@ function LinReg() {
   const [backendStatus, setBackendStatus] = useState("checking");
   const [sampleLoading, setSampleLoading] = useState(false);
   const [alpha, setAlpha] = useState(0.01);
+  const [iterations, setIterations] = useState(100); // Default iterations value
   const [isHighAlpha, setIsHighAlpha] = useState(false);
 
   // Check backend health on component mount
@@ -129,7 +130,8 @@ function LinReg() {
       console.log('Preparing data for API:', {
         X: dataPairs.map(pair => parseFloat(pair.x.trim())),
         y: dataPairs.map(pair => parseFloat(pair.y.trim())),
-        alpha: alpha
+        alpha: alpha,
+        iterations: iterations
       });
       
       // Prepare data for the API with extra validation
@@ -144,7 +146,8 @@ function LinReg() {
           if (isNaN(y)) throw new Error(`Invalid Y value: ${pair.y}`);
           return y;
         }),
-        alpha: alpha
+        alpha: alpha,
+        iterations: iterations
       };
 
       console.log('Calling API endpoint...');
@@ -279,6 +282,8 @@ function LinReg() {
               + Add Data Point
             </button>
           </div>
+          
+          {/* Learning Rate Slider */}
           <div style={{ marginTop: '2rem' }}>
             <label htmlFor="alpha-slider" style={{ 
               display: 'block', 
@@ -306,7 +311,7 @@ function LinReg() {
               marginTop: '0.25rem'
             }}>
               <span>0.0000 (Slow learning)</span>
-              <span>0.12 (Fast or Exploding learning)</span>
+              <span>10 (Fast or Exploding learning)</span>
             </div>
             
             {/* Add warning message for high learning rate */}
@@ -324,6 +329,38 @@ function LinReg() {
                 Values below 1.0 are recommended for most datasets.
               </div>
             )}
+          </div>
+          
+          {/* Iterations Slider */}
+          <div style={{ marginTop: '2rem' }}>
+            <label htmlFor="iterations-slider" style={{ 
+              display: 'block', 
+              marginBottom: '0.5rem', 
+              fontWeight: '500', 
+              color: '#4b5563' 
+            }}>
+              Max Iterations: {iterations}
+            </label>
+            <input
+              id="iterations-slider"
+              type="range"
+              min="1"
+              max="500"
+              step="1"
+              value={iterations} 
+              onChange={(e) => setIterations(parseInt(e.target.value))}
+              style={{ width: '100%' }}
+            />
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              fontSize: '0.8rem', 
+              color: '#6b7280',
+              marginTop: '0.25rem'
+            }}>
+              <span>1 (Fast but might not converge)</span>
+              <span>500 (Slower but more accurate)</span>
+            </div>
           </div>
           
           <div style={{ marginTop: '2rem' }}>
@@ -380,16 +417,7 @@ function LinReg() {
                     {results.mse !== undefined ? results.mse.toFixed(4) : 'N/A'}
                   </div>
                 </div>
-                {results.iterations !== undefined && (
-                  <div className="metric-card">
-                    <div className="metric-title">Iterations</div>
-                    <div className="metric-value">
-                      {results.iterations}
-                    </div>
-                  </div>
-                )}
               </div>
-              
               <div className="visualization-container">
                 <h3>Visualization:</h3>
                 {results.plot ? (
