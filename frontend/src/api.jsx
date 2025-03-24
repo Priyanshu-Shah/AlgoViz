@@ -53,6 +53,18 @@ export const runLinearRegression = async (data) => {
         }
       }
       
+      // Map the train metrics to the expected names in the frontend
+      if (processedData.mse_train !== undefined && processedData.r2_train !== undefined) {
+        processedData.mse = processedData.mse_train;
+        processedData.r2 = processedData.r2_train;
+      }
+
+      // Remove the test metrics if you don't need them
+      delete processedData.mse_test;
+      delete processedData.r2_test;
+      delete processedData.mse_train;
+      delete processedData.r2_train;
+      
       return processedData;
     }
     

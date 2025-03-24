@@ -138,10 +138,8 @@ def linear_regression():
         sanitized_result = {
             'coefficient': float(result.get('coefficient', 0)),
             'intercept': float(result.get('intercept', 0)),
-            'mse_train': float(result.get('mse_train', 0)),
-            'r2_train': float(result.get('r2_train', 0)),
-            'mse_test': float(result.get('mse_test', 0)),
-            'r2_test': float(result.get('r2_test', 0)),
+            'mse': float(result.get('mse', 0)),  # Change from mse_train
+            'r2': float(result.get('r2', 0)),    # Change from r2_train
             'equation': result.get('equation', 'y = 0x + 0')
         }
         

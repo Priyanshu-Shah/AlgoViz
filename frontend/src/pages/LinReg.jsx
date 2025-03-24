@@ -141,13 +141,18 @@ function LinReg() {
 
       console.log('Calling API endpoint...');
       const response = await runLinearRegression(apiData);
-      console.log('API response received:', response);
+
+
       
       if (response.error) {
         throw new Error(response.error);
       }
       
       setResults(response);
+      console.log('Results state set to:', response);
+
+      
+
     } catch (err) {
       console.error('Error details:', err);
       setError(`Error: ${err.message || 'An error occurred while running the model. Please try again.'}`);
@@ -192,7 +197,12 @@ function LinReg() {
         </div>
       )}
 
-      <div className="content-container">
+      <div className="content-container" style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr', 
+        gap: '2rem',
+        alignItems: 'start'
+      }}>
         <div className="input-section">
           <div className="section-header">
             <h2 className="section-title">Input Data</h2>
@@ -263,82 +273,61 @@ function LinReg() {
 
         <div className="results-section">
           <h2 className="section-title">Results</h2>
-          
           {loading ? (
             <div className="loading-spinner">
               <div className="spinner"></div>
             </div>
           ) : results ? (
-            <div className="results-content">
-              {results.error ? (
-                <div className="error-message">
-                  <p>Error from server: {results.error}</p>
-                  {results.details && <pre>{JSON.stringify(results.details, null, 2)}</pre>}
+            <div className="results-content" style={{ padding: '20px', background: '#f9fafb', borderRadius: '8px' }}>
+              <div className="metric-card">
+                <div className="metric-title">Model Equation</div>
+                <div className="metric-value">
+                  {`y = ${results.coefficient !== undefined ? results.coefficient.toFixed(4) : '?'} × x + ${results.intercept !== undefined ? results.intercept.toFixed(4) : '?'}`}
                 </div>
-              ) : (
-                <>
-                  <div className="metric-card">
-                    <div className="metric-title">Model Equation</div>
-                    <div className="metric-value">{results.equation || 'N/A'}</div>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                <div className="metric-card">
+                  <div className="metric-title">Coefficient</div>
+                  <div className="metric-value">
+                    {results.coefficient !== undefined ? results.coefficient.toFixed(4) : 'N/A'}
                   </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                    <div className="metric-card">
-                      <div className="metric-title">Coefficient</div>
-                      <div className="metric-value">
-                        {results.coefficient !== undefined ? results.coefficient.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">Intercept</div>
-                      <div className="metric-value">
-                        {results.intercept !== undefined ? results.intercept.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">R² Score (Train)</div>
-                      <div className="metric-value">
-                        {results.r2_train !== undefined ? results.r2_train.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">R² Score (Test)</div>
-                      <div className="metric-value">
-                        {results.r2_test !== undefined ? results.r2_test.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">MSE (Train)</div>
-                      <div className="metric-value">
-                        {results.mse_train !== undefined ? results.mse_train.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">MSE (Test)</div>
-                      <div className="metric-value">
-                        {results.mse_test !== undefined ? results.mse_test.toFixed(4) : 'N/A'}
-                      </div>
-                    </div>
+                </div>
+                
+                <div className="metric-card">
+                  <div className="metric-title">Intercept</div>
+                  <div className="metric-value">
+                    {results.intercept !== undefined ? results.intercept.toFixed(4) : 'N/A'}
                   </div>
-                  
-                  <div className="visualization-container">
-                    <h3 style={{ marginBottom: '1rem' }}>Visualization</h3>
-                    {results.plot ? (
-                      <img 
-                        src={`data:image/png;base64,${results.plot}`} 
-                        alt="Linear Regression Plot" 
-                      />
-                    ) : (
-                      <p>No visualization available</p>
-                    )}
+                </div>
+                
+                <div className="metric-card">
+                  <div className="metric-title">R² Score</div>
+                  <div className="metric-value">
+                    {results.r2 !== undefined ? results.r2.toFixed(4) : 'N/A'}
                   </div>
-                </>
-              )}
+                </div>
+                
+                <div className="metric-card">
+                  <div className="metric-title">Mean Squared Error</div>
+                  <div className="metric-value">
+                    {results.mse !== undefined ? results.mse.toFixed(4) : 'N/A'}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="visualization-container">
+                <h3>Visualization:</h3>
+                {results.plot ? (
+                  <img 
+                    src={`data:image/png;base64,${results.plot}`} 
+                    alt="Linear Regression Plot" 
+                    style={{ maxWidth: '100%', border: '1px solid #e5e7eb' }}
+                  />
+                ) : (
+                  <p>No plot data found in response</p>
+                )}
+              </div>
             </div>
           ) : (
             <div style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>
@@ -347,6 +336,7 @@ function LinReg() {
           )}
         </div>
       </div>
+  
     </motion.div>
   );
 }
