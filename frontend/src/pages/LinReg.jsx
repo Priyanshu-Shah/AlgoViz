@@ -12,12 +12,13 @@ function LinReg() {
   const [error, setError] = useState(null);
   const [backendStatus, setBackendStatus] = useState("checking");
   const [sampleLoading, setSampleLoading] = useState(false);
+  const [alpha, setAlpha] = useState(0.01);
+  const [isHighAlpha, setIsHighAlpha] = useState(false);
 
   // Check backend health on component mount
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        // console.log("Checking backend health at: " + Process.env.API_URL + "/health");
         const health = await checkHealth();
         console.log("Backend health response:", health);
         setBackendStatus(health.status === "healthy" ? "connected" : "disconnected");
@@ -30,6 +31,11 @@ function LinReg() {
     
     checkBackendHealth();
   }, []);
+
+  // Check if alpha is too high
+  useEffect(() => {
+    setIsHighAlpha(alpha > 0.1);
+  }, [alpha]);
 
   const handleAddPair = () => {
     setDataPairs([...dataPairs, { x: '', y: '' }]);
@@ -122,7 +128,8 @@ function LinReg() {
       // Log the data before sending to API for debugging
       console.log('Preparing data for API:', {
         X: dataPairs.map(pair => parseFloat(pair.x.trim())),
-        y: dataPairs.map(pair => parseFloat(pair.y.trim()))
+        y: dataPairs.map(pair => parseFloat(pair.y.trim())),
+        alpha: alpha
       });
       
       // Prepare data for the API with extra validation
@@ -136,13 +143,12 @@ function LinReg() {
           const y = parseFloat(pair.y.trim());
           if (isNaN(y)) throw new Error(`Invalid Y value: ${pair.y}`);
           return y;
-        })
+        }),
+        alpha: alpha
       };
 
       console.log('Calling API endpoint...');
       const response = await runLinearRegression(apiData);
-
-
       
       if (response.error) {
         throw new Error(response.error);
@@ -150,12 +156,26 @@ function LinReg() {
       
       setResults(response);
       console.log('Results state set to:', response);
-
-      
-
     } catch (err) {
       console.error('Error details:', err);
-      setError(`Error: ${err.message || 'An error occurred while running the model. Please try again.'}`);
+      
+      // Check if the error is related to learning rate
+      const errorMessage = err.message || 'An error occurred while running the model.';
+      
+      if (
+        errorMessage.toLowerCase().includes('diverg') || 
+        errorMessage.toLowerCase().includes('explod') ||
+        errorMessage.toLowerCase().includes('inf') ||
+        errorMessage.toLowerCase().includes('nan') ||
+        errorMessage.toLowerCase().includes('overflow')
+      ) {
+        setError(
+          `Error: Gradient descent failed to converge. This is likely due to a learning rate (${alpha.toFixed(4)}) that is too high. ` +
+          `Try reducing the learning rate to a value below 1.0.`
+        );
+      } else {
+        setError(`Error: ${errorMessage} Please try again.`);
+      }
     } finally {
       setLoading(false);
     }
@@ -259,6 +279,52 @@ function LinReg() {
               + Add Data Point
             </button>
           </div>
+          <div style={{ marginTop: '2rem' }}>
+            <label htmlFor="alpha-slider" style={{ 
+              display: 'block', 
+              marginBottom: '0.5rem', 
+              fontWeight: '500', 
+              color: '#4b5563' 
+            }}>
+              Learning Rate (Alpha): {alpha.toFixed(4)}
+            </label>
+            <input
+              id="alpha-slider"
+              type="range"
+              min="0.0000"
+              max="0.12"
+              step="0.0001"
+              value={alpha}
+              onChange={(e) => setAlpha(parseFloat(e.target.value))}
+              style={{ width: '100%' }}
+            />
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              fontSize: '0.8rem', 
+              color: '#6b7280',
+              marginTop: '0.25rem'
+            }}>
+              <span>0.0000 (Slow learning)</span>
+              <span>0.12 (Fast or Exploding learning)</span>
+            </div>
+            
+            {/* Add warning message for high learning rate */}
+            {isHighAlpha && (
+              <div style={{
+                marginTop: '0.5rem',
+                padding: '0.5rem',
+                backgroundColor: '#FEF2F2',
+                borderRadius: '0.375rem',
+                borderLeft: '3px solid #EF4444',
+                color: '#B91C1C',
+                fontSize: '0.875rem'
+              }}>
+                <strong>Warning:</strong> High learning rates may cause exploding gradients and divergence. 
+                Values below 1.0 are recommended for most datasets.
+              </div>
+            )}
+          </div>
           
           <div style={{ marginTop: '2rem' }}>
             <button 
@@ -314,6 +380,14 @@ function LinReg() {
                     {results.mse !== undefined ? results.mse.toFixed(4) : 'N/A'}
                   </div>
                 </div>
+                {results.iterations !== undefined && (
+                  <div className="metric-card">
+                    <div className="metric-title">Iterations</div>
+                    <div className="metric-value">
+                      {results.iterations}
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="visualization-container">
@@ -336,7 +410,6 @@ function LinReg() {
           )}
         </div>
       </div>
-  
     </motion.div>
   );
 }

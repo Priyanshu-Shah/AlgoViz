@@ -116,10 +116,13 @@ def linear_regression():
         
         if len(data['X']) != len(data['y']):
             return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
-            
-        # Call the model
-        print("Calling linear regression model function")
-        result = run_linear_regression(data)
+        
+        # Get alpha parameter with default value
+        alpha = data.get('alpha', 0.0)
+        
+        # Call the model with alpha parameter
+        print(f"Calling linear regression model function with alpha={alpha}")
+        result = run_linear_regression(data, alpha=alpha)
         
         # Check if the result is None (which would cause JSON serialization issues)
         if result is None:
