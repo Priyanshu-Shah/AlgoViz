@@ -1,5 +1,6 @@
 import axios from 'axios';
-const API_URL = 'http://localhost:5000';
+// Make sure this URL matches your backend server address and port
+const API_URL = 'http://localhost:5000/api';
 
 export const getModels = async () => {
   const response = await axios.get(`${API_URL}`);
@@ -9,4 +10,106 @@ export const getModels = async () => {
 export const getModelDetails = async (id) => {
   const response = await axios.get(`${API_URL}/${id}`);
   return response.data;
+};
+
+export const runLinearRegression = async (data) => {
+  try {
+    console.log('API call to:', `${API_URL}/linear-regression`);
+    console.log('Data being sent:', JSON.stringify(data, null, 2));
+    
+    // Add timeout to prevent hanging requests
+    const response = await axios.post(`${API_URL}/linear-regression`, data, {
+      timeout: 30000, // 30 second timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+    
+    console.log('API raw response status:', response.status);
+    console.log('API raw response type:', typeof response.data);
+    
+    // Directly check if response.data exists, has expected properties
+    if (!response.data) {
+      console.error('Empty response received from server');
+      return { error: 'Empty response received from server' };
+    }
+    
+    // Additional check for basic result structure
+    if (response.data && 
+        typeof response.data === 'object' && 
+        !response.data.error) {
+      const keys = Object.keys(response.data);
+      console.log('Response contains keys:', keys);
+      
+      // Ensure all numeric values are converted to numbers
+      const processedData = {...response.data};
+      for (const key in processedData) {
+        if (key !== 'plot' && key !== 'equation' && processedData[key] !== null) {
+          const num = parseFloat(processedData[key]);
+          if (!isNaN(num)) {
+            processedData[key] = num;
+          }
+        }
+      }
+      
+      return processedData;
+    }
+    
+    // Return the data as is (might contain error info)
+    return response.data;
+  } catch (error) {
+    console.error('API error in runLinearRegression:', error);
+    
+    let errorMessage = 'Network error or server unavailable';
+    let errorDetails = {};
+    
+    if (error.response) {
+      // The server responded with a status code outside the 2xx range
+      console.error('Server error status:', error.response.status);
+      console.error('Server error data:', error.response.data);
+      errorMessage = error.response.data.error || `Server error: ${error.response.status}`;
+      errorDetails = error.response.data;
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('No response received:', error.request);
+      errorMessage = 'No response received from server';
+    } else {
+      // Something happened in setting up the request
+      console.error('Request setup error:', error.message);
+      errorMessage = `Request error: ${error.message}`;
+    }
+    
+    return {
+      error: errorMessage,
+      details: errorDetails,
+      isClientError: true
+    };
+  }
+};
+
+export const getLinearRegressionSampleData = async (n_samples = 30, noise = 5.0) => {
+  const response = await axios.get(
+    `${API_URL}/linear-regression/sample?n_samples=${n_samples}&noise=${noise}`
+  );
+  return response.data;
+};
+
+export const runKnnClassification = async (data) => {
+  const response = await axios.post(`${API_URL}/knn-classification`, data);
+  return response.data;
+};
+
+export const runKnnRegression = async (data) => {
+  const response = await axios.post(`${API_URL}/knn-regression`, data);
+  return response.data;
+};
+
+export const checkHealth = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/health`);
+    return response.data;
+  } catch (error) {
+    return { status: 'error', message: error.message };
+  }
 };
