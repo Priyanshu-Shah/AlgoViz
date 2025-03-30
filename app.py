@@ -14,7 +14,7 @@ sys.path.append(current_dir)
 
 # Import the model functions
 from models.linReg import run_linear_regression
-from models.knn import predict_single_point
+from models.knn import predict_single_point, generate_decision_boundary
 
 # Import the sample data generator
 try:
@@ -216,9 +216,6 @@ def knn_regression():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-# Add these new endpoints after your existing KNN endpoints
-
-# Keep all existing endpoints and modify the knn-predict-point endpoint
 
 @app.route('/api/knn-predict-point', methods=['POST'])
 def knn_predict_point():
@@ -231,19 +228,76 @@ def knn_predict_point():
             
         n_neighbors = data.get('n_neighbors', 5)
         
+        # Print debug info
+        print(f"KNN predict point request received")
+        print(f"X sample: {data['X'][:3]}")
+        print(f"y sample: {data['y'][:10]}")
+        print(f"y types: {[type(y) for y in data['y'][:5]]}")
+        print(f"Predict point: {predict_point}")
+        print(f"n_neighbors: {n_neighbors}")
+        
+        # Validate inputs
+        if 'X' not in data or 'y' not in data:
+            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
+        
+        if not isinstance(data['X'], list) or not isinstance(data['y'], list):
+            return jsonify({"error": "X and y must be arrays/lists"}), 400
+        
+        if len(data['X']) < 1:
+            return jsonify({"error": "At least 1 data point is required for prediction"}), 400
+        
+        if len(data['X']) != len(data['y']):
+            return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
+        
         # Get predictions
-        from models.knn import predict_single_point
         result = predict_single_point(data, predict_point, n_neighbors)
+        
+        # Print result
+        print(f"Prediction result: {result}")
         
         if 'error' in result:
             return jsonify(result), 400
             
         return jsonify(result)
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Exception in KNN predict point endpoint: {str(e)}")
+        print(f"Traceback: {error_traceback}")
+        return jsonify({"error": str(e), "traceback": error_traceback}), 500
 
-# Remove the knn-interactive-train endpoint as we're not generating boundaries
-
+@app.route('/api/knn-decision-boundary', methods=['POST'])
+def knn_decision_boundary():
+    data = request.json
+    try:
+        n_neighbors = data.get('n_neighbors', 5)
+        
+        # Validate inputs
+        if 'X' not in data or 'y' not in data:
+            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
+        
+        if not isinstance(data['X'], list) or not isinstance(data['y'], list):
+            return jsonify({"error": "X and y must be arrays/lists"}), 400
+        
+        if len(data['X']) < 5:
+            return jsonify({"error": "At least 5 data points are required for decision boundary"}), 400
+        
+        if len(data['X']) != len(data['y']):
+            return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
+        
+        # Generate decision boundary
+        result = generate_decision_boundary(data, n_neighbors)
+        
+        if 'error' in result:
+            return jsonify(result), 400
+            
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Exception in KNN decision boundary endpoint: {str(e)}")
+        print(f"Traceback: {error_traceback}")
+        return jsonify({"error": str(e), "traceback": error_traceback}), 500
 
 
 if __name__ == '__main__':
