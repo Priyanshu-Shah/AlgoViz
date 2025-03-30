@@ -1,110 +1,253 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { runKnnClassification, runKnnRegression } from '../api';
 import './ModelPage.css';
 
 function KNN() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('classification');
-  const [dataPairs, setDataPairs] = useState([{ x1: '', x2: '', y: '' }]);
   const [neighbors, setNeighbors] = useState(5);
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  
+  // States for interactive visualization
+  const canvasRef = useRef(null);
+  const [selectedClass, setSelectedClass] = useState('1');
+  const [pointsMode, setPointsMode] = useState('train'); // 'train' or 'predict'
+  const [trainingPoints, setTrainingPoints] = useState([]);
+  const [predictPoints, setPredictPoints] = useState([]);
+  const [predictions, setPredictions] = useState([]);
+  const [canvasDimensions, setCanvasDimensions] = useState({ width: 400, height: 400 });
+  const [scale, setScale] = useState({
+    x: { min: 0, max: 10 },
+    y: { min: 0, max: 10 }
+  });
 
-  const handleAddPair = () => {
-    if (activeTab === 'classification') {
-      setDataPairs([...dataPairs, { x1: '', x2: '', y: '' }]);
-    } else {
-      setDataPairs([...dataPairs, { x: '', y: '' }]);
-    }
+  // Convert screen coordinates to data coordinates
+  const screenToData = (x, y) => {
+    const { width, height } = canvasDimensions;
+    const dataX = (x / width) * (scale.x.max - scale.x.min) + scale.x.min;
+    const dataY = ((height - y) / height) * (scale.y.max - scale.y.min) + scale.y.min;
+    return { x: dataX, y: dataY };
   };
 
-  const handleRemovePair = (index) => {
-    const newPairs = [...dataPairs];
-    newPairs.splice(index, 1);
-    setDataPairs(newPairs);
-  };
-
-  const handleInputChange = (index, field, value) => {
-    const newPairs = [...dataPairs];
-    newPairs[index][field] = value;
-    setDataPairs(newPairs);
-  };
-
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    setResults(null);
-    setError(null);
+  // Handle canvas click
+  const handleCanvasClick = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     
-    // Reset data pairs based on the tab
-    if (tab === 'classification') {
-      setDataPairs([{ x1: '', x2: '', y: '' }]);
-    } else {
-      setDataPairs([{ x: '', y: '' }]);
-    }
-  };
-
-  const handleRunModel = async () => {
-    // Validate inputs
-    if (dataPairs.length < 5) {
-      setError('Please add at least 5 data points for meaningful KNN analysis');
-      return;
-    }
-
-    // Check for empty or invalid inputs
-    let hasInvalidInputs = false;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     
-    if (activeTab === 'classification') {
-      hasInvalidInputs = dataPairs.some(pair => 
-        pair.x1 === '' || pair.x2 === '' || pair.y === '' || 
-        isNaN(parseFloat(pair.x1)) || isNaN(parseFloat(pair.x2))
-      );
-    } else {
-      hasInvalidInputs = dataPairs.some(pair => 
-        pair.x === '' || pair.y === '' || isNaN(parseFloat(pair.x)) || isNaN(parseFloat(pair.y))
-      );
-    }
+    const dataPoint = screenToData(x, y);
     
-    if (hasInvalidInputs) {
-      setError('All inputs must be valid numbers (except class labels for classification)');
-      return;
-    }
-
-    setError(null);
-    setLoading(true);
-
-    try {
-      // Prepare data for the API
-      let apiData;
+    if (pointsMode === 'train') {
+      // Add point to training data
+      const newPoint = {
+        x1: dataPoint.x,
+        x2: dataPoint.y,
+        y: selectedClass
+      };
       
-      if (activeTab === 'classification') {
-        apiData = {
-          X: dataPairs.map(pair => [parseFloat(pair.x1), parseFloat(pair.x2)]),
-          y: dataPairs.map(pair => pair.y),
-          n_neighbors: parseInt(neighbors)
+      setTrainingPoints([...trainingPoints, newPoint]);
+    } else {
+      // Add point to predict list
+      const newPoint = {
+        x1: dataPoint.x,
+        x2: dataPoint.y
+      };
+      
+      setPredictPoints([...predictPoints, newPoint]);
+    }
+  };
+
+  // Make predictions for all points in predictPoints
+  const predictAllPoints = async () => {
+    if (trainingPoints.length < 1) {
+      setError('Need at least 1 training point to make predictions');
+      return;
+    }
+    
+    if (predictPoints.length < 1) {
+      setError('No prediction points added. Click in predict mode to add points to predict.');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const predictions = [];
+      
+      // Make prediction for each point
+      for (const point of predictPoints) {
+        const apiData = {
+          X: trainingPoints.map(p => [p.x1, p.x2]),
+          y: trainingPoints.map(p => p.y),
+          n_neighbors: parseInt(neighbors),
+          predict_point: [point.x1, point.x2]
         };
         
-        const response = await runKnnClassification(apiData);
-        setResults(response);
-      } else {
-        apiData = {
-          X: dataPairs.map(pair => [parseFloat(pair.x)]),
-          y: dataPairs.map(pair => parseFloat(pair.y)),
-          n_neighbors: parseInt(neighbors)
-        };
+        const response = await fetch('http://localhost:5000/api/knn-predict-point', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(apiData),
+        });
         
-        const response = await runKnnRegression(apiData);
-        setResults(response);
+        const result = await response.json();
+        
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        
+        predictions.push({
+          ...point,
+          predictedClass: result.predicted_class
+        });
       }
+      
+      // Update predictions
+      setPredictions(predictions);
+      
     } catch (err) {
-      setError('An error occurred while running the model. Please try again.');
+      setError('Error making prediction: ' + err.message);
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
+
+  // Reset the visualization
+  const resetVisualization = () => {
+    setTrainingPoints([]);
+    setPredictPoints([]);
+    setPredictions([]);
+    setPointsMode('train');
+    setError(null);
+  };
+
+  // Canvas drawing effect
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw grid and points
+    drawCanvas();
+    
+    function drawCanvas() {
+      // Draw grid
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 0.5;
+      
+      // Draw horizontal grid lines
+      for (let i = 0; i <= 10; i++) {
+        const y = canvas.height - (i / 10) * canvas.height;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+      
+      // Draw vertical grid lines
+      for (let i = 0; i <= 10; i++) {
+        const x = (i / 10) * canvas.width;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      
+      // Draw axes labels
+      ctx.fillStyle = '#4b5563';
+      ctx.font = '12px Inter, sans-serif';
+      
+      // X-axis labels
+      for (let i = 0; i <= 10; i += 2) {
+        const x = (i / 10) * canvas.width;
+        const value = scale.x.min + (i / 10) * (scale.x.max - scale.x.min);
+        ctx.fillText(value.toFixed(1), x - 10, canvas.height - 5);
+      }
+      
+      // Y-axis labels
+      for (let i = 0; i <= 10; i += 2) {
+        const y = canvas.height - (i / 10) * canvas.height;
+        const value = scale.y.min + (i / 10) * (scale.y.max - scale.y.min);
+        ctx.fillText(value.toFixed(1), 5, y + 4);
+      }
+      
+      // Draw training points
+      trainingPoints.forEach(point => {
+        const x = ((point.x1 - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+        const y = canvas.height - ((point.x2 - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        
+        // Different color based on class
+        if (point.y === '1') {
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.7)'; // Blue
+        } else {
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.7)'; // Red
+        }
+        
+        ctx.fill();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+      
+      // Draw points to predict (before prediction)
+      if (predictions.length === 0) {
+        predictPoints.forEach(point => {
+          const x = ((point.x1 - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+          const y = canvas.height - ((point.x2 - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+          
+          ctx.beginPath();
+          ctx.arc(x, y, 8, 0, Math.PI * 2);
+          
+          // Gray color for unpredicted points
+          ctx.fillStyle = 'rgba(156, 163, 175, 0.7)'; // Gray
+          
+          ctx.fill();
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        });
+      }
+      
+      // Draw prediction results
+      predictions.forEach(pred => {
+        const x = ((pred.x1 - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+        const y = canvas.height - ((pred.x2 - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        
+        // Fill color based on predicted class
+        if (pred.predictedClass === '1') {
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.7)'; // Blue
+        } else {
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.7)'; // Red
+        }
+        
+        // Dotted border to indicate prediction
+        ctx.setLineDash([2, 2]);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+    }
+  }, [trainingPoints, predictPoints, predictions, scale, canvasDimensions]);
 
   return (
     <motion.div 
@@ -125,35 +268,20 @@ function KNN() {
       </div>
 
       <p className="model-description">
-        K-Nearest Neighbors is a versatile machine learning algorithm used for both classification and regression tasks. 
+        K-Nearest Neighbors is a versatile machine learning algorithm used for classification tasks.
         It makes predictions based on the k most similar data points in the training set.
       </p>
 
-      <div className="tabs">
-        <div 
-          className={`tab ${activeTab === 'classification' ? 'active' : ''}`}
-          onClick={() => handleTabChange('classification')}
-        >
-          Classification
-        </div>
-        <div 
-          className={`tab ${activeTab === 'regression' ? 'active' : ''}`}
-          onClick={() => handleTabChange('regression')}
-        >
-          Regression
-        </div>
-      </div>
-
       <div className="content-container">
         <div className="input-section">
-          <h2 className="section-title">Input Data</h2>
+          <h2 className="section-title">Interactive KNN</h2>
           
           {error && <div className="error-message">{error}</div>}
           
           <div className="form-group">
-            <label htmlFor="neighbors">Number of Neighbors (k):</label>
+            <label htmlFor="interactive-neighbors">Number of Neighbors (k):</label>
             <input
-              id="neighbors"
+              id="interactive-neighbors"
               type="number"
               className="input-control"
               min="1"
@@ -162,184 +290,162 @@ function KNN() {
             />
           </div>
           
-          <div>
-            {activeTab === 'classification' ? (
-              <>
-                <p style={{ marginBottom: '1rem', color: '#4b5563' }}>
-                  Enter (x1, x2, class) values for classification:
+          <div style={{ marginTop: '1.5rem' }}>
+            <h3 style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: '500' }}>
+              Add Points Mode: {pointsMode === 'train' ? 'Training Points' : 'Points to Predict'}
+            </h3>
+            
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <button
+                onClick={() => setPointsMode('train')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  backgroundColor: pointsMode === 'train' ? '#4b5563' : '#e5e7eb',
+                  color: pointsMode === 'train' ? 'white' : '#4b5563',
+                  cursor: 'pointer'
+                }}
+              >
+                Add Training Points
+              </button>
+              <button
+                onClick={() => setPointsMode('predict')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  backgroundColor: pointsMode === 'predict' ? '#4b5563' : '#e5e7eb',
+                  color: pointsMode === 'predict' ? 'white' : '#4b5563',
+                  cursor: 'pointer'
+                }}
+              >
+                Add Prediction Points
+              </button>
+            </div>
+            
+            {pointsMode === 'train' && (
+              <div style={{ marginBottom: '1rem' }}>
+                <p style={{ marginBottom: '0.5rem', color: '#4b5563' }}>
+                  Select class for training points:
                 </p>
-                
-                {dataPairs.map((pair, index) => (
-                  <div key={index} className="data-input-container">
-                    <div className="data-pair-input">
-                      <input
-                        type="text"
-                        className="input-control"
-                        placeholder="X1 value"
-                        value={pair.x1}
-                        onChange={(e) => handleInputChange(index, 'x1', e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        className="input-control"
-                        placeholder="X2 value"
-                        value={pair.x2}
-                        onChange={(e) => handleInputChange(index, 'x2', e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        className="input-control"
-                        placeholder="Class"
-                        value={pair.y}
-                        onChange={(e) => handleInputChange(index, 'y', e.target.value)}
-                      />
-                    </div>
-                    {dataPairs.length > 1 && (
-                      <button 
-                        className="remove-btn" 
-                        onClick={() => handleRemovePair(index)}
-                        aria-label="Remove data point"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </>
-            ) : (
-              <>
-                <p style={{ marginBottom: '1rem', color: '#4b5563' }}>
-                  Enter (x, y) pairs for regression:
-                </p>
-                
-                {dataPairs.map((pair, index) => (
-                  <div key={index} className="data-input-container">
-                    <div className="data-pair-input">
-                      <input
-                        type="text"
-                        className="input-control"
-                        placeholder="X value"
-                        value={pair.x}
-                        onChange={(e) => handleInputChange(index, 'x', e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        className="input-control"
-                        placeholder="Y value"
-                        value={pair.y}
-                        onChange={(e) => handleInputChange(index, 'y', e.target.value)}
-                      />
-                    </div>
-                    {dataPairs.length > 1 && (
-                      <button 
-                        className="remove-btn" 
-                        onClick={() => handleRemovePair(index)}
-                        aria-label="Remove data point"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={() => setSelectedClass('1')}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      backgroundColor: selectedClass === '1' ? 'rgba(59, 130, 246, 1)' : 'rgba(59, 130, 246, 0.2)',
+                      color: selectedClass === '1' ? 'white' : '#1e40af',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Class 1
+                  </button>
+                  <button
+                    onClick={() => setSelectedClass('2')}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      backgroundColor: selectedClass === '2' ? 'rgba(239, 68, 68, 1)' : 'rgba(239, 68, 68, 0.2)',
+                      color: selectedClass === '2' ? 'white' : '#b91c1c',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Class 2
+                  </button>
+                </div>
+              </div>
             )}
             
-            <button 
-              className="add-data-button" 
-              onClick={handleAddPair}
-            >
-              + Add Data Point
-            </button>
-          </div>
-          
-          <div style={{ marginTop: '2rem' }}>
-            <button 
-              className="action-button" 
-              onClick={handleRunModel}
-              disabled={loading}
-            >
-              {loading ? 'Running...' : 'Run KNN'}
-            </button>
+            <p style={{ marginBottom: '1rem', color: '#4b5563' }}>
+              {pointsMode === 'train' 
+                ? 'Click on the graph to add training points' 
+                : 'Click on the graph to add points you want to predict'}
+            </p>
+            
+            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <button 
+                className="action-button" 
+                onClick={predictAllPoints}
+                disabled={loading || trainingPoints.length < 1 || predictPoints.length < 1}
+              >
+                {loading ? 'Predicting...' : 'Predict Points'}
+              </button>
+              
+              <button 
+                className="action-button" 
+                onClick={resetVisualization}
+                style={{ backgroundColor: '#ef4444' }}
+              >
+                Reset All
+              </button>
+            </div>
+            
+            <div style={{ marginTop: '1rem' }}>
+              <p>
+                <strong>Training Points:</strong> {trainingPoints.length}
+              </p>
+              <p>
+                <strong>Points to Predict:</strong> {predictPoints.length}
+              </p>
+              <p>
+                <strong>Predictions Made:</strong> {predictions.length}
+              </p>
+            </div>
           </div>
         </div>
-
+        
         <div className="results-section">
-          <h2 className="section-title">Results</h2>
+          <h2 className="section-title">Interactive Visualization</h2>
           
           {loading ? (
             <div className="loading-spinner">
               <div className="spinner"></div>
             </div>
-          ) : results ? (
-            <div className="results-content">
-              {activeTab === 'classification' ? (
-                <>
-                  <div className="metric-card">
-                    <div className="metric-title">Accuracy</div>
-                    <div className="metric-value">{(results.accuracy * 100).toFixed(2)}%</div>
-                  </div>
-                  
-                  <div className="metric-card">
-                    <div className="metric-title">Model Parameters</div>
-                    <div className="metric-value">k = {results.n_neighbors}</div>
-                  </div>
-                  
-                  <div className="visualization-container">
-                    <h3 style={{ marginBottom: '1rem' }}>Classification Visualization</h3>
-                    {results.plot && (
-                      <img 
-                        src={`data:image/png;base64,${results.plot}`} 
-                        alt="KNN Classification Plot" 
-                      />
-                    )}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                    <div className="metric-card">
-                      <div className="metric-title">R² Score (Train)</div>
-                      <div className="metric-value">{results.r2_train.toFixed(4)}</div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">R² Score (Test)</div>
-                      <div className="metric-value">{results.r2_test.toFixed(4)}</div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">MSE (Train)</div>
-                      <div className="metric-value">{results.mse_train.toFixed(4)}</div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">MSE (Test)</div>
-                      <div className="metric-value">{results.mse_test.toFixed(4)}</div>
-                    </div>
-                    
-                    <div className="metric-card">
-                      <div className="metric-title">Model Parameters</div>
-                      <div className="metric-value">k = {results.n_neighbors}</div>
-                    </div>
-                  </div>
-                  
-                  <div className="visualization-container">
-                    <h3 style={{ marginBottom: '1rem' }}>Regression Visualization</h3>
-                    {results.plot && (
-                      <img 
-                        src={`data:image/png;base64,${results.plot}`} 
-                        alt="KNN Regression Plot" 
-                      />
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
           ) : (
-            <div style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>
-              Enter data points and run the model to see results.
+            <div style={{ 
+              border: '1px solid #e5e7eb', 
+              borderRadius: '0.5rem', 
+              overflow: 'hidden',
+              position: 'relative' 
+            }}>
+              <canvas 
+                ref={canvasRef}
+                width={canvasDimensions.width}
+                height={canvasDimensions.height}
+                onClick={handleCanvasClick}
+                style={{ 
+                  display: 'block', 
+                  backgroundColor: '#f9fafb',
+                  cursor: 'crosshair'
+                }}
+              />
+              
+              <div style={{
+                position: 'absolute',
+                bottom: '10px',
+                right: '10px',
+                padding: '0.5rem',
+                backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                borderRadius: '0.25rem',
+                fontSize: '0.875rem'
+              }}>
+                <strong>Mode: {pointsMode === 'train' ? 'Adding Training Points' : 'Adding Points to Predict'}</strong>
+              </div>
             </div>
           )}
+          
+          <div style={{ marginTop: '1rem' }}>
+            <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+              <strong>Blue points:</strong> Class 1 | <strong>Red points:</strong> Class 2 | <strong>Gray points:</strong> Unpredicted
+            </p>
+            <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+              Solid border = training point | Dotted border = predicted point
+            </p>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -347,4 +453,3 @@ function KNN() {
 }
 
 export default KNN;
- 

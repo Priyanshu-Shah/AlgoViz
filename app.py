@@ -14,7 +14,7 @@ sys.path.append(current_dir)
 
 # Import the model functions
 from models.linReg import run_linear_regression
-from models.knn import run_knn_classification, run_knn_regression
+from models.knn import predict_single_point
 
 # Import the sample data generator
 try:
@@ -215,6 +215,36 @@ def knn_regression():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+# Add these new endpoints after your existing KNN endpoints
+
+# Keep all existing endpoints and modify the knn-predict-point endpoint
+
+@app.route('/api/knn-predict-point', methods=['POST'])
+def knn_predict_point():
+    data = request.json
+    try:
+        # Extract the point to predict
+        predict_point = data.pop('predict_point', None)
+        if not predict_point:
+            return jsonify({"error": "No prediction point provided"}), 400
+            
+        n_neighbors = data.get('n_neighbors', 5)
+        
+        # Get predictions
+        from models.knn import predict_single_point
+        result = predict_single_point(data, predict_point, n_neighbors)
+        
+        if 'error' in result:
+            return jsonify(result), 400
+            
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+# Remove the knn-interactive-train endpoint as we're not generating boundaries
+
+
 
 if __name__ == '__main__':
     print(" * ML Visualizer Backend Starting...")
