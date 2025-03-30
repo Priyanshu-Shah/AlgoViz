@@ -1,10 +1,9 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import './Navbar.css';
 
 function Navbar() {
-  const location = useLocation();
   
   return (
     <motion.nav 
@@ -18,35 +17,8 @@ function Navbar() {
           <span className="logo-text">ML Visualizer</span>
         </Link>
         
-        <div className="nav-links">
-          <Link 
-            to="/" 
-            className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
-          >
-            Home
-          </Link>
-          <Link 
-            to="/lin-reg" 
-            className={`nav-link ${location.pathname === '/lin-reg' ? 'active' : ''}`}
-          >
-            Linear Regression
-          </Link>
-          <Link 
-            to="/knn" 
-            className={`nav-link ${location.pathname === '/knn' ? 'active' : ''}`}
-          >
-            KNN
-          </Link>
-          <Link 
-            to="/about" 
-            className={`nav-link ${location.pathname === '/about' ? 'active' : ''}`}
-          >
-            About
-          </Link>
-        </div>
-        
         <a 
-          href="https://github.com/yourusername/PRML_project" 
+          href="https://github.com/Priyanshu-Shah/PRML_project" 
           target="_blank" 
           rel="noopener noreferrer"
           className="github-link"

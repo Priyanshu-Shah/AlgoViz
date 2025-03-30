@@ -5,6 +5,7 @@ import HomePage from './pages/HomePage';
 import LinReg from './pages/LinReg';
 import KNN from './pages/KNN';
 import DicTree from './pages/DecTree';
+import KMeans from './pages/KMeans';
 import About from './pages/About';
 import Docs from './pages/Docs';
 
@@ -17,6 +18,7 @@ function App() {
           <Route path="/lin-reg" element={<LinReg />} />
           <Route path="/knn" element={<KNN />} />
           <Route path="/dec-tree" element={<DicTree />} />
+          <Route path="/kmeans" element={<KMeans />} />
           <Route path="/about" element={<About />} />
           <Route path="/docs" element={<Docs />} />
         </Routes>

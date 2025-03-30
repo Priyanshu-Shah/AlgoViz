@@ -61,7 +61,7 @@ function HomePage() {
       name: "Support Vector Machine",
       description: "Classify data by finding optimal hyperplanes",
       path: "/svm",
-      image: "https://cdn0.iconfinder.com/data/icons/artificial-intelligence-volume-02-1/1000/SVM_Support_vector_machine-512.png",
+      image: "https://cdn5.vectorstock.com/i/1000x1000/76/89/support-machine-svm-algorithm-color-icon-vector-50297689.jpg",
       implemented: false
     },
     {
@@ -78,8 +78,8 @@ function HomePage() {
       name: "K-Means Clustering",
       description: "Group data points into k distinct clusters",
       path: "/kmeans",
-      image: "https://cdn4.iconfinder.com/data/icons/artificial-intelligence-line-color/64/clustering-512.png",
-      implemented: false
+      image: "https://static.thenounproject.com/png/961658-200.png",
+      implemented: true
     },
     {
       name: "DBSCAN",

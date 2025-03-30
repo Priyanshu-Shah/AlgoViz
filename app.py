@@ -147,19 +147,27 @@ def linear_regression():
         if not isinstance(result, dict):
             return jsonify({"error": f"Expected dict result, got {type(result)}"}), 500
             
-        # Create a clean copy with only essential fields
+        # Create a clean copy with additional fields
         sanitized_result = {
             'coefficient': float(result.get('coefficient', 0)),
             'intercept': float(result.get('intercept', 0)),
-            'mse': float(result.get('mse', 0)),  # Change from mse_train
-            'r2': float(result.get('r2', 0)),    # Change from r2_train
+            'mse': float(result.get('mse', 0)),
+            'r2': float(result.get('r2', 0)),
             'equation': result.get('equation', 'y = 0x + 0')
         }
         
         # Add plot only if available and valid
         if 'plot' in result and result['plot']:
             sanitized_result['plot'] = result['plot']
-            
+        
+        # Add cost history plot if available
+        if 'cost_history_plot' in result and result['cost_history_plot']:
+            sanitized_result['cost_history_plot'] = result['cost_history_plot']
+        
+        # Add cost history data if available
+        if 'cost_history' in result and result['cost_history']:
+            sanitized_result['cost_history'] = result['cost_history']
+        
         print(f"Returning successful result with keys: {list(sanitized_result.keys())}")
         return jsonify(sanitized_result)
         

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { runLinearRegression, getLinearRegressionSampleData, checkHealth } from '../api';
@@ -13,9 +13,18 @@ function LinReg() {
   const [backendStatus, setBackendStatus] = useState("checking");
   const [sampleLoading, setSampleLoading] = useState(false);
   const [alpha, setAlpha] = useState(0.01);
-  const [iterations, setIterations] = useState(100); // Default iterations value
+  const [iterations, setIterations] = useState(100);
   const [isHighAlpha, setIsHighAlpha] = useState(false);
-
+  
+  // Canvas ref and state for interactive plotting
+  const canvasRef = useRef(null);
+  const [canvasDimensions] = useState({ width: 550, height: 400 });
+  // Fixed scale - no adjustment
+  const scale = {
+    x: { min: 0, max: 10 },
+    y: { min: 0, max: 10 }
+  };
+  
   // Check backend health on component mount
   useEffect(() => {
     const checkBackendHealth = async () => {
@@ -37,6 +46,176 @@ function LinReg() {
   useEffect(() => {
     setIsHighAlpha(alpha > 0.1);
   }, [alpha]);
+  
+  // Convert data pairs to points - extracted for reuse
+  const getValidPoints = () => {
+    return dataPairs
+      .filter(pair => pair.x !== '' && pair.y !== '' && !isNaN(parseFloat(pair.x)) && !isNaN(parseFloat(pair.y)))
+      .map(pair => ({
+        x: parseFloat(pair.x),
+        y: parseFloat(pair.y)
+      }));
+  };
+  
+  // Draw canvas with points and regression line
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw grid and axes
+    drawGrid(ctx, canvas);
+    
+    // Get valid points
+    const points = getValidPoints();
+    
+    // Draw points
+    drawPoints(ctx, canvas, points);
+    
+    // Draw regression line if results exist
+    if (results && results.coefficient !== undefined && results.intercept !== undefined) {
+      drawRegressionLine(ctx, canvas, results.coefficient, results.intercept);
+    }
+    
+    // Debug console logs
+    console.log("Canvas redrawn with:", {
+      points: points.length,
+      results: results ? "yes" : "no"
+    });
+    
+  }, [dataPairs, results]);
+
+  // Helper function to draw grid and axes
+  const drawGrid = (ctx, canvas) => {
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 0.5;
+    
+    // Draw horizontal grid lines
+    for (let i = 0; i <= 10; i++) {
+      const y = canvas.height - (i / 10) * canvas.height;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+    
+    // Draw vertical grid lines
+    for (let i = 0; i <= 10; i++) {
+      const x = (i / 10) * canvas.width;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+    
+    // Draw axes labels
+    ctx.fillStyle = '#4b5563';
+    ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+    
+    // X-axis labels
+    for (let i = 0; i <= 10; i += 2) {
+      const x = (i / 10) * canvas.width;
+      const value = scale.x.min + (i / 10) * (scale.x.max - scale.x.min);
+      ctx.fillText(value.toFixed(1), x - 10, canvas.height - 5);
+    }
+    
+    // Y-axis labels
+    for (let i = 0; i <= 10; i += 2) {
+      const y = canvas.height - (i / 10) * canvas.height;
+      const value = scale.y.min + (i / 10) * (scale.y.max - scale.y.min);
+      ctx.fillText(value.toFixed(1), 5, y + 4);
+    }
+  };
+
+  // Helper function to draw points
+  const drawPoints = (ctx, canvas, points) => {
+    if (!points || points.length === 0) return;
+    
+    points.forEach(point => {
+      // Convert data coordinates to screen coordinates
+      const x = ((point.x - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+      const y = canvas.height - ((point.y - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+      
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.7)';
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+  };
+
+  // Helper function to draw regression line
+  const drawRegressionLine = (ctx, canvas, coefficient, intercept) => {
+    // Don't try to draw a line if we don't have valid coefficient/intercept
+    if (coefficient === undefined || intercept === undefined) return;
+    
+    ctx.beginPath();
+    
+    // Calculate line endpoints in data coordinates
+    const x1 = scale.x.min;
+    const y1 = coefficient * x1 + intercept;
+    const x2 = scale.x.max;
+    const y2 = coefficient * x2 + intercept;
+    
+    // Convert to screen coordinates
+    const sx1 = 0;
+    const sy1 = canvas.height - ((y1 - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+    const sx2 = canvas.width;
+    const sy2 = canvas.height - ((y2 - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+    
+    ctx.moveTo(sx1, sy1);
+    ctx.lineTo(sx2, sy2);
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  };
+
+  // Convert screen coordinates to data coordinates
+  const screenToData = (x, y) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    
+    const dataX = scale.x.min + (x / canvas.width) * (scale.x.max - scale.x.min);
+    const dataY = scale.y.min + ((canvas.height - y) / canvas.height) * (scale.y.max - scale.y.min);
+    
+    return { x: dataX, y: dataY };
+  };
+
+  // Handle canvas click to add point
+  const handleCanvasClick = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const dataPoint = screenToData(x, y);
+    console.log("Canvas clicked at data coordinates:", dataPoint);
+    
+    // Add point to data pairs - use existing empty pair if available
+    const emptyPairIndex = dataPairs.findIndex(pair => pair.x === '' && pair.y === '');
+    const newPoint = {
+      x: dataPoint.x.toFixed(2),
+      y: dataPoint.y.toFixed(2)
+    };
+    
+    if (emptyPairIndex >= 0) {
+      // Update existing empty pair
+      const newPairs = [...dataPairs];
+      newPairs[emptyPairIndex] = newPoint;
+      setDataPairs(newPairs);
+    } else {
+      // Add new pair
+      setDataPairs([...dataPairs, newPoint]);
+    }
+  };
 
   const handleAddPair = () => {
     setDataPairs([...dataPairs, { x: '', y: '' }]);
@@ -45,6 +224,12 @@ function LinReg() {
   const handleRemovePair = (index) => {
     const newPairs = [...dataPairs];
     newPairs.splice(index, 1);
+    
+    // Ensure there's always at least one row
+    if (newPairs.length === 0) {
+      newPairs.push({ x: '', y: '' });
+    }
+    
     setDataPairs(newPairs);
   };
 
@@ -95,29 +280,19 @@ function LinReg() {
     }
   };
 
-  const handleRunModel = async () => {
-    // Validate inputs
-    if (dataPairs.length < 3) {
-      setError('Please add at least 3 data points for meaningful regression');
-      return;
-    }
+  const resetData = () => {
+    setDataPairs([{ x: '', y: '' }]);
+    setResults(null);
+    setError(null);
+  };
 
-    // More detailed validation to identify the problem point
-    const invalidPairs = dataPairs.filter(pair => 
-      pair.x === '' || pair.y === '' || isNaN(parseFloat(pair.x)) || isNaN(parseFloat(pair.y))
-    );
+  const handleRunModel = async () => {
+    // Filter out empty pairs
+    const validPairs = getValidPoints();
     
-    if (invalidPairs.length > 0) {
-      console.log('Invalid pairs found:', invalidPairs);
-      
-      // Create a more specific error message
-      const errorMessage = `Invalid input found at row(s): ${
-        dataPairs.map((pair, idx) => 
-          (pair.x === '' || pair.y === '' || isNaN(parseFloat(pair.x)) || isNaN(parseFloat(pair.y))) ? (idx + 1) : null
-        ).filter(Boolean).join(', ')
-      }. All inputs must be valid numbers.`;
-      
-      setError(errorMessage);
+    // Validate inputs
+    if (validPairs.length < 2) {
+      setError('Please add at least 2 data points for meaningful regression');
       return;
     }
 
@@ -126,39 +301,23 @@ function LinReg() {
     setResults(null); // Reset results before new request
 
     try {
-      // Log the data before sending to API for debugging
-      console.log('Preparing data for API:', {
-        X: dataPairs.map(pair => parseFloat(pair.x.trim())),
-        y: dataPairs.map(pair => parseFloat(pair.y.trim())),
-        alpha: alpha,
-        iterations: iterations
-      });
-      
-      // Prepare data for the API with extra validation
+      // Prepare data for the API
       const apiData = {
-        X: dataPairs.map(pair => {
-          const x = parseFloat(pair.x.trim());
-          if (isNaN(x)) throw new Error(`Invalid X value: ${pair.x}`);
-          return x;
-        }),
-        y: dataPairs.map(pair => {
-          const y = parseFloat(pair.y.trim());
-          if (isNaN(y)) throw new Error(`Invalid Y value: ${pair.y}`);
-          return y;
-        }),
+        X: validPairs.map(pair => pair.x),
+        y: validPairs.map(pair => pair.y),
         alpha: alpha,
         iterations: iterations
       };
 
-      console.log('Calling API endpoint...');
+      console.log('Calling API endpoint with data:', apiData);
       const response = await runLinearRegression(apiData);
       
       if (response.error) {
         throw new Error(response.error);
       }
       
-      setResults(response);
       console.log('Results state set to:', response);
+      setResults(response);
     } catch (err) {
       console.error('Error details:', err);
       
@@ -228,63 +387,166 @@ function LinReg() {
       }}>
         <div className="input-section">
           <div className="section-header">
-            <h2 className="section-title">Input Data</h2>
-            <button 
-              className="sample-data-button" 
-              onClick={loadSampleData}
-              disabled={sampleLoading}
-            >
-              {sampleLoading ? 'Loading...' : 'Load Sample Data'}
-            </button>
+            <h2 className="section-title">Interactive Data Input</h2>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button 
+                className="sample-data-button" 
+                onClick={loadSampleData}
+                disabled={sampleLoading}
+              >
+                {sampleLoading ? 'Loading...' : 'Load Sample Data'}
+              </button>
+              <button 
+                className="sample-data-button" 
+                onClick={resetData}
+                style={{
+                  backgroundColor: '#fee2e2',
+                  color: '#b91c1c'
+                }}
+              >
+                Reset Data
+              </button>
+            </div>
           </div>
           
           {error && <div className="error-message">{error}</div>}
-          
-          <div>
-            <p style={{ marginBottom: '1rem', color: '#4b5563' }}>
-              Enter (x, y) pairs for regression analysis:
+
+          <div style={{ marginBottom: '1.5rem' }}>
+            <p style={{ color: '#4b5563', marginBottom: '0.5rem', lineHeight: '1.5' }}>
+              Click on the graph below to add data points, or manually enter values in the table.
             </p>
+          </div>
+          
+          {/* Interactive Canvas */}
+          <div style={{ 
+            marginBottom: '1.5rem',
+            border: '1px solid #e5e7eb', 
+            borderRadius: '0.75rem', 
+            overflow: 'hidden',
+            position: 'relative',
+            backgroundColor: '#f9fafb',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+          }}>
+            <canvas 
+              ref={canvasRef}
+              width={canvasDimensions.width}
+              height={canvasDimensions.height}
+              onClick={handleCanvasClick}
+              style={{ 
+                display: 'block', 
+                cursor: 'crosshair'
+              }}
+            />
+            
+            {/* Add a click overlay hint */}
+            <div style={{
+              position: 'absolute',
+              bottom: '10px',
+              right: '10px',
+              padding: '4px 8px',
+              backgroundColor: 'rgba(255, 255, 255, 0.8)',
+              borderRadius: '4px',
+              fontSize: '0.8rem',
+              color: '#4b5563',
+              pointerEvents: 'none'
+            }}>
+              Click to add point
+            </div>
+          </div>
+          
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem' }}>Data Points Table</h3>
+          <div style={{ 
+            marginBottom: '1.5rem',
+            maxHeight: '200px', 
+            overflowY: 'auto',
+            border: '1px solid #e5e7eb',
+            borderRadius: '0.5rem',
+            padding: '0.5rem'
+          }}>
+            <div style={{ marginBottom: '0.5rem', display: 'flex', fontWeight: 'bold' }}>
+              <div style={{ flex: 1 }}>X</div>
+              <div style={{ flex: 1 }}>Y</div>
+              <div style={{ width: '30px' }}></div>
+            </div>
             
             {dataPairs.map((pair, index) => (
-              <div key={index} className="data-input-container">
-                <div className="data-pair-input">
+              <div key={index} className="data-input-container" style={{
+                display: 'flex',
+                alignItems: 'center',
+                marginBottom: '5px'
+              }}>
+                <div style={{ display: 'flex', flex: 1, gap: '5px' }}>
                   <input
                     type="text"
-                    className="input-control"
-                    placeholder="X value (e.g., 1.5)"
+                    style={{
+                      flex: 1,
+                      padding: '5px 8px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px'
+                    }}
+                    placeholder="X value"
                     value={pair.x}
                     onChange={(e) => handleInputChange(index, 'x', e.target.value)}
                   />
                   <input
                     type="text"
-                    className="input-control"
-                    placeholder="Y value (e.g., 7.2)"
+                    style={{
+                      flex: 1,
+                      padding: '5px 8px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px'
+                    }}
+                    placeholder="Y value"
                     value={pair.y}
                     onChange={(e) => handleInputChange(index, 'y', e.target.value)}
                   />
                 </div>
-                {dataPairs.length > 1 && (
-                  <button 
-                    className="remove-btn" 
-                    onClick={() => handleRemovePair(index)}
-                    aria-label="Remove data point"
-                  >
-                    ×
-                  </button>
-                )}
+                <button 
+                  onClick={() => handleRemovePair(index)}
+                  aria-label="Remove data point"
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#f3f4f6',
+                    border: 'none',
+                    borderRadius: '4px',
+                    marginLeft: '8px',
+                    cursor: 'pointer',
+                    fontSize: '1.2rem',
+                    color: '#6b7280'
+                  }}
+                >
+                  ×
+                </button>
               </div>
             ))}
             
             <button 
-              className="add-data-button" 
               onClick={handleAddPair}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '100%',
+                padding: '5px',
+                backgroundColor: '#f3f4f6',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                marginTop: '10px',
+                color: '#4b5563',
+                fontWeight: '500'
+              }}
             >
               + Add Data Point
             </button>
           </div>
           
           {/* Learning Rate Slider */}
-          <div style={{ marginTop: '2rem' }}>
+          <div style={{ marginTop: '1.5rem' }}>
             <label htmlFor="alpha-slider" style={{ 
               display: 'block', 
               marginBottom: '0.5rem', 
@@ -296,7 +558,7 @@ function LinReg() {
             <input
               id="alpha-slider"
               type="range"
-              min="0.0000"
+              min="0.0001"
               max="0.12"
               step="0.0001"
               value={alpha}
@@ -310,11 +572,10 @@ function LinReg() {
               color: '#6b7280',
               marginTop: '0.25rem'
             }}>
-              <span>0.0000 (Slow learning)</span>
-              <span>10 (Fast or Exploding learning)</span>
+              <span>0.0001 (Slow learning)</span>
+              <span>0.12 (Fast learning)</span>
             </div>
             
-            {/* Add warning message for high learning rate */}
             {isHighAlpha && (
               <div style={{
                 marginTop: '0.5rem',
@@ -326,13 +587,13 @@ function LinReg() {
                 fontSize: '0.875rem'
               }}>
                 <strong>Warning:</strong> High learning rates may cause exploding gradients and divergence. 
-                Values below 1.0 are recommended for most datasets.
+                Values below 0.1 are recommended for most datasets.
               </div>
             )}
           </div>
           
           {/* Iterations Slider */}
-          <div style={{ marginTop: '2rem' }}>
+          <div style={{ marginTop: '1.5rem' }}>
             <label htmlFor="iterations-slider" style={{ 
               display: 'block', 
               marginBottom: '0.5rem', 
@@ -359,15 +620,27 @@ function LinReg() {
               marginTop: '0.25rem'
             }}>
               <span>1 (Fast but might not converge)</span>
-              <span>500 (Slower but more accurate)</span>
+              <span>500 (More accurate)</span>
             </div>
           </div>
           
-          <div style={{ marginTop: '2rem' }}>
+          <div style={{ marginTop: '1.5rem' }}>
             <button 
-              className="action-button" 
               onClick={handleRunModel}
               disabled={loading || backendStatus === "disconnected"}
+              style={{
+                width: '100%',
+                backgroundColor: loading ? '#93c5fd' : '#3b82f6',
+                color: 'white',
+                padding: '12px',
+                fontSize: '1.1rem',
+                fontWeight: '500',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: loading ? 'wait' : 'pointer',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                opacity: (loading || backendStatus === "disconnected") ? 0.7 : 1
+              }}
             >
               {loading ? 'Running...' : 'Run Regression'}
             </button>
@@ -377,63 +650,112 @@ function LinReg() {
         <div className="results-section">
           <h2 className="section-title">Results</h2>
           {loading ? (
-            <div className="loading-spinner">
-              <div className="spinner"></div>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              height: '200px'
+            }}>
+              <div style={{
+                border: '4px solid #f3f4f6',
+                borderTopColor: '#3b82f6',
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
+                animation: 'spin 1s linear infinite'
+              }}></div>
+              <style>{`
+                @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+                }
+              `}</style>
             </div>
           ) : results ? (
-            <div className="results-content" style={{ padding: '20px', background: '#f9fafb', borderRadius: '8px' }}>
-              <div className="metric-card">
-                <div className="metric-title">Model Equation</div>
-                <div className="metric-value">
+            <div style={{ padding: '1rem' }}>
+              <div style={{
+                border: '1px solid #e5e7eb',
+                borderRadius: '6px',
+                padding: '1rem',
+                backgroundColor: 'white',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>Model Equation</div>
+                <div style={{ fontWeight: '600', fontSize: '1.2rem' }}>
                   {`y = ${results.coefficient !== undefined ? results.coefficient.toFixed(4) : '?'} × x + ${results.intercept !== undefined ? results.intercept.toFixed(4) : '?'}`}
                 </div>
               </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                <div className="metric-card">
-                  <div className="metric-title">Coefficient</div>
-                  <div className="metric-value">
+                <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Coefficient</div>
+                  <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
                     {results.coefficient !== undefined ? results.coefficient.toFixed(4) : 'N/A'}
                   </div>
                 </div>
                 
-                <div className="metric-card">
-                  <div className="metric-title">Intercept</div>
-                  <div className="metric-value">
+                <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Intercept</div>
+                  <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
                     {results.intercept !== undefined ? results.intercept.toFixed(4) : 'N/A'}
                   </div>
                 </div>
                 
-                <div className="metric-card">
-                  <div className="metric-title">R² Score</div>
-                  <div className="metric-value">
+                <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>R² Score</div>
+                  <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
                     {results.r2 !== undefined ? results.r2.toFixed(4) : 'N/A'}
                   </div>
                 </div>
                 
-                <div className="metric-card">
-                  <div className="metric-title">Mean Squared Error</div>
-                  <div className="metric-value">
+                <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Mean Squared Error</div>
+                  <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
                     {results.mse !== undefined ? results.mse.toFixed(4) : 'N/A'}
                   </div>
                 </div>
               </div>
-              <div className="visualization-container">
-                <h3>Visualization:</h3>
-                {results.plot ? (
+              
+              {/* Show cost history plot if available */}
+              {results.cost_history_plot && (
+                <div style={{ marginTop: '1.5rem', backgroundColor: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                  <h3 style={{ marginBottom: '0.75rem', fontSize: '1.1rem', fontWeight: '500' }}>Learning Curve:</h3>
                   <img 
-                    src={`data:image/png;base64,${results.plot}`} 
-                    alt="Linear Regression Plot" 
-                    style={{ maxWidth: '100%', border: '1px solid #e5e7eb' }}
+                    src={`data:image/png;base64,${results.cost_history_plot}`} 
+                    alt="Cost History Plot" 
+                    style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
                   />
-                ) : (
-                  <p>No plot data found in response</p>
-                )}
+                  <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                    This graph shows how the Mean Squared Error decreases over iterations during training.
+                  </p>
+                </div>
+              )}
+              
+              {/* Model Fit Visualization Info - note that actual visualization is shown on the canvas */}
+              <div style={{ 
+                marginTop: '1.5rem', 
+                backgroundColor: 'white', 
+                padding: '1rem', 
+                borderRadius: '6px', 
+                border: '1px solid #e5e7eb' 
+              }}>
+                <h3 style={{ marginBottom: '0.75rem', fontSize: '1.1rem', fontWeight: '500' }}>Model Fit Visualization:</h3>
+                <p style={{ color: '#6b7280', fontSize: '0.9rem' }}>
+                  The regression line is shown in red on the interactive graph. Blue points are your data.
+                </p>
               </div>
             </div>
           ) : (
-            <div style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>
-              Enter data points and run the model to see results.
+            <div style={{ 
+              color: '#6b7280', 
+              textAlign: 'center', 
+              padding: '2rem',
+              backgroundColor: '#f9fafb',
+              borderRadius: '6px',
+              border: '1px dashed #d1d5db' 
+            }}>
+              <p>Add points by clicking on the interactive graph or using the table.</p>
+              <p>Then click "Run Regression" to see results.</p>
             </div>
           )}
         </div>

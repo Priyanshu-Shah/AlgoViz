@@ -77,18 +77,6 @@ def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6)
     return coefficient, intercept, cost_history, actual_iterations
 
 def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
-    """
-    Run linear regression on the provided data using gradient descent
-    
-    Parameters:
-    data (dict): Contains 'X' and 'y' as lists or numpy arrays
-    alpha (float): Learning rate for gradient descent
-    iterations (int): Maximum number of iterations for gradient descent
-    random_state (int): Random seed for reproducibility
-    
-    Returns:
-    dict: Results including model coefficients, metrics, and visualization
-    """
     try:
         # Set random seed
         np.random.seed(random_state)
@@ -116,6 +104,11 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
         
         if len(X) < 2:
             raise ValueError("At least 2 data points are required for regression.")
+        
+        # Add a small amount of noise if all X values are the same
+        if np.all(X == X[0]):
+            print("Warning: All X values are identical. Adding small noise for numerical stability.")
+            X = X + np.random.normal(0, 0.01, X.shape)
         
         # Train the model using gradient descent
         coef, intercept, cost_history, actual_iterations = gradient_descent(
@@ -156,6 +149,25 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
         plot_data = base64.b64encode(buf.read()).decode('utf-8')
         plt.close()
         
+        # Generate cost history plot
+        plt.figure(figsize=(10, 6))
+        plt.plot(range(1, len(cost_history) + 1), cost_history, marker='o', markersize=3, color='blue')
+        plt.title('Cost vs Iterations')
+        plt.xlabel('Iterations')
+        plt.ylabel('Mean Squared Error')
+        plt.grid(True, alpha=0.3)
+        
+        # Add logarithmic scale if there's significant change in cost
+        if len(cost_history) > 1 and cost_history[0] / max(cost_history[-1], 1e-10) > 10:
+            plt.yscale('log')
+            
+        # Save cost history plot to base64 string
+        cost_buf = io.BytesIO()
+        plt.savefig(cost_buf, format='png', dpi=100)
+        cost_buf.seek(0)
+        cost_plot_data = base64.b64encode(cost_buf.read()).decode('utf-8')
+        plt.close()
+        
         # Debug info
         print(f"Model trained successfully: coef={coef}, intercept={intercept}")
         print(f"Metrics: R2={r2}, MSE={mse}")
@@ -172,23 +184,10 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
             'max_iterations': int(iterations),
             'final_cost': float(cost_history[-1]) if cost_history else 0.0,
             'plot': plot_data,
+            'cost_history': [float(c) for c in cost_history],
+            'cost_history_plot': cost_plot_data,
             'equation': f'y = {coef:.4f}x + {intercept:.4f}'
         }
-        
-        # Additional validation to ensure all values are properly serializable
-        for key in result:
-            if key not in ['plot', 'equation']:
-                try:
-                    if key in ['iterations', 'max_iterations']:
-                        result[key] = int(result[key])
-                    else:
-                        result[key] = float(result[key])
-                except (ValueError, TypeError):
-                    print(f"Warning: Value for {key} could not be converted. Setting to default.")
-                    if key in ['iterations', 'max_iterations']:
-                        result[key] = 0
-                    else:
-                        result[key] = 0.0
         
         # Verify the result structure before returning
         print(f"Returning result keys: {list(result.keys())}")
