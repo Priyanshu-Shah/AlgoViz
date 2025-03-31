@@ -217,3 +217,44 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
                 'y_sample': str(data.get('y', [])[:5]) if isinstance(data.get('y', None), list) else "Invalid y data"
             }
         }
+
+def create_regression_plot(X, y, coef, intercept):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Plot data points
+    ax.scatter(X, y, color='blue', alpha=0.6, label='Data Points')
+    
+    # Sort X values for the line
+    sorted_indices = np.argsort(X)
+    sorted_X = X[sorted_indices]
+    
+    # Predict y values for the line
+    line_y = coef * sorted_X + intercept
+    
+    # Plot regression line
+    ax.plot(sorted_X, line_y, color='red', linewidth=2, label=f'y = {coef:.2f}x + {intercept:.2f}')
+    
+    # Add labels and title
+    ax.set_xlabel('X', fontsize=12, labelpad=10)
+    ax.set_ylabel('y', fontsize=12, labelpad=10)
+    ax.set_title('Linear Regression', fontsize=14, pad=20)
+    ax.legend(loc='best')
+    ax.grid(alpha=0.3)
+    
+    # Add padding to the plot (20% on each side)
+    x_range = max(X) - min(X)
+    y_range = max(y) - min(y)
+    
+    ax.set_xlim(min(X) - 0.2 * x_range, max(X) + 0.2 * x_range)
+    ax.set_ylim(min(y) - 0.2 * y_range, max(y) + 0.2 * y_range)
+    
+    plt.tight_layout(pad=2.0)
+    
+    # Convert plot to base64 string
+    buffer = io.BytesIO()  # Use io.BytesIO since we import io module
+    plt.savefig(buffer, format='png', dpi=100)
+    plt.close(fig)
+    buffer.seek(0)
+    
+    plot_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+    return plot_base64
