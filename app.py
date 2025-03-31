@@ -15,6 +15,7 @@ sys.path.append(current_dir)
 # Import the model functions
 from models.linReg import run_linear_regression
 from models.knn import predict_single_point, generate_decision_boundary
+from models.kmeans import run_kmeans, generate_clustering_data  # Add K-means imports
 
 # Import the sample data generator
 try:
@@ -86,7 +87,9 @@ def root():
             "/api/linear-regression",
             "/api/linear-regression/sample",
             "/api/knn-classification",
-            "/api/knn-regression"
+            "/api/knn-regression",
+            "/api/kmeans",               # Add K-means endpoint
+            "/api/kmeans/sample"         # Add K-means sample data endpoint
         ]
     })
 
@@ -307,6 +310,131 @@ def knn_decision_boundary():
         print(f"Traceback: {error_traceback}")
         return jsonify({"error": str(e), "traceback": error_traceback}), 500
 
+# K-means endpoints
+@app.route('/api/kmeans', methods=['POST'])
+def kmeans_clustering():
+    data = request.json
+    
+    try:
+        # Validate input data
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "Invalid request format. Expected JSON object"}), 400
+            
+        if 'X' not in data:
+            return jsonify({"error": "Missing required data field: X must be provided"}), 400
+            
+        if not isinstance(data['X'], list):
+            return jsonify({"error": "X must be an array/list"}), 400
+            
+        if len(data['X']) < 3:
+            return jsonify({"error": "At least 3 data points are required for clustering"}), 400
+        
+        # Get parameters with default values
+        k = data.get('k', 3)
+        max_iterations = data.get('max_iterations', 100)
+        
+        # Run K-means
+        result = run_kmeans(data, k=k, max_iterations=max_iterations)
+        
+        if 'error' in result:
+            return jsonify(result), 400
+            
+        return jsonify(result)
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Exception in K-means endpoint: {str(e)}")
+        print(f"Traceback: {error_details}")
+        
+        return jsonify({
+            "error": str(e),
+            "traceback": error_details
+        }), 500
+
+@app.route('/api/kmeans/sample', methods=['GET'])
+def kmeans_sample_data():
+    try:
+        n_samples = request.args.get('n_samples', default=100, type=int)
+        n_clusters = request.args.get('n_clusters', default=3, type=int)
+        variance = request.args.get('variance', default=0.5, type=float)
+        dataset_type = request.args.get('dataset_type', default='blobs', type=str)
+        
+        data = generate_clustering_data(
+            n_samples=n_samples,
+            n_clusters=n_clusters,
+            variance=variance,
+            dataset_type=dataset_type
+        )
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/api/kmeans/preview', methods=['POST'])
+def kmeans_preview():
+    data = request.json
+    
+    try:
+        # Validate input data
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "Invalid request format. Expected JSON object"}), 400
+            
+        if 'X' not in data:
+            return jsonify({"error": "Missing required data field: X must be provided"}), 400
+            
+        if not isinstance(data['X'], list):
+            return jsonify({"error": "X must be an array/list"}), 400
+            
+        if len(data['X']) < 1:
+            return jsonify({"error": "At least 1 data point is required for preview"}), 400
+        
+        # Generate a simple scatter plot of the data
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import base64
+        from io import BytesIO
+        
+        X = np.array(data['X'])
+        
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.scatter(X[:, 0], X[:, 1], color='#3f51b5', alpha=0.7)
+        
+        ax.set_title('Data Preview')
+        ax.set_xlabel('Feature 1')
+        ax.set_ylabel('Feature 2')
+        ax.grid(alpha=0.3)
+        
+        # Add padding around the data
+        x_range = X[:, 0].max() - X[:, 0].min()
+        y_range = X[:, 1].max() - X[:, 1].min()
+        
+        padding = 0.1
+        ax.set_xlim(X[:, 0].min() - padding * x_range, X[:, 0].max() + padding * x_range)
+        ax.set_ylim(X[:, 1].min() - padding * y_range, X[:, 1].max() + padding * y_range)
+        
+        # Convert plot to base64 string
+        buffer = BytesIO()
+        plt.tight_layout()
+        plt.savefig(buffer, format='png', dpi=100)
+        plt.close(fig)
+        buffer.seek(0)
+        
+        plot_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+        
+        return jsonify({
+            'plot': plot_base64
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Exception in K-means preview endpoint: {str(e)}")
+        print(f"Traceback: {error_details}")
+        
+        return jsonify({
+            "error": str(e),
+            "traceback": error_details
+        }), 500
 
 if __name__ == '__main__':
     print(" * ML Visualizer Backend Starting...")
