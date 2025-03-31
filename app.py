@@ -8,6 +8,9 @@ import json
 import os
 import sys
 
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
+
 # Make sure the models directory is in the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
@@ -15,7 +18,8 @@ sys.path.append(current_dir)
 # Import the model functions
 from models.linReg import run_linear_regression
 from models.knn import predict_single_point, generate_decision_boundary
-from models.kmeans import run_kmeans, generate_clustering_data  # Add K-means imports
+from models.kmeans import run_kmeans, generate_clustering_data
+from models.PCA import run_pca, generate_pca_data  
 
 # Import the sample data generator
 try:
@@ -88,8 +92,10 @@ def root():
             "/api/linear-regression/sample",
             "/api/knn-classification",
             "/api/knn-regression",
-            "/api/kmeans",               # Add K-means endpoint
-            "/api/kmeans/sample"         # Add K-means sample data endpoint
+            "/api/kmeans",              
+            "/api/kmeans/sample",
+            "/api/pca",                  
+            "/api/pca/sample-data"         
         ]
     })
 
@@ -435,6 +441,57 @@ def kmeans_preview():
             "error": str(e),
             "traceback": error_details
         }), 500
+
+@app.route('/api/pca', methods=['POST'])
+def pca_analysis():
+    data = request.json
+    
+    try:
+        # Log incoming data for debugging
+        print(f"Received API request for PCA")
+        print(f"Request data type: {type(data)}")
+        print(f"Request data content: {data}")
+        
+        # Validate input data
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "Invalid request format. Expected JSON object"}), 400
+            
+        if 'X' not in data:
+            return jsonify({"error": "Missing required data field: X must be provided"}), 400
+            
+        if not isinstance(data['X'], list):
+            return jsonify({"error": "X must be an array/list"}), 400
+            
+        if len(data['X']) < 2:
+            return jsonify({"error": "At least 2 data points are required for PCA"}), 400
+        
+        # Run PCA algorithm - Make sure this is properly imported
+        from models.PCA import run_pca
+        result = run_pca(data)
+        
+        return jsonify(result)
+    
+    except Exception as e:
+        import traceback
+        print(f"Error in PCA endpoint: {str(e)}")
+        print(traceback.format_exc())  # Print full traceback for debugging
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/pca/sample-data', methods=['GET'])
+def pca_sample_data():
+    try:
+        # Use the generate_pca_data function from the PCA module
+        from models.PCA import generate_pca_data
+        
+        # Generate sample data
+        data = generate_pca_data()
+        
+        return jsonify(data)
+    except Exception as e:
+        import traceback
+        print(f"Error generating PCA sample data: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     print(" * ML Visualizer Backend Starting...")

@@ -8,6 +8,7 @@ import DicTree from './pages/DecTree';
 import KMeans from './pages/KMeans';
 import About from './pages/About';
 import Docs from './pages/Docs';
+import PCA from './pages/PCA';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="/kmeans" element={<KMeans />} />
           <Route path="/about" element={<About />} />
           <Route path="/docs" element={<Docs />} />
+          <Route path="/pca" element={<PCA />} />
         </Routes>
       </MainLayout>
     </Router>

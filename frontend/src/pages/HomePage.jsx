@@ -93,7 +93,7 @@ function HomePage() {
       description: "Reduce dimensionality while preserving variance",
       path: "/pca",
       image: "https://cdn-icons-png.flaticon.com/512/4616/4616734.png",
-      implemented: false
+      implemented: true
     }
   ];
 

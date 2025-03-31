@@ -125,3 +125,25 @@ export const checkHealth = async () => {
     return { status: 'error', message: error.message };
   }
 };
+
+export const runPCA = async (data) => {
+  try {
+    // Fix the URL: remove the duplicate /api/ path
+    const response = await axios.post(`${API_URL}/pca`, data);
+    return response.data;
+  } catch (error) {
+    console.error('Error running PCA:', error);
+    throw error.response?.data || error;
+  }
+};
+
+export const getPCASampleData = async () => {
+  try {
+    // Fix the URL: remove the duplicate /api/ path
+    const response = await axios.get(`${API_URL}/pca/sample-data`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting PCA sample data:', error);
+    throw error.response?.data || error;
+  }
+};
