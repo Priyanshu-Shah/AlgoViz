@@ -18,11 +18,11 @@ function LinReg() {
   
   // Canvas ref and state for interactive plotting
   const canvasRef = useRef(null);
-  const [canvasDimensions] = useState({ width: 550, height: 400 });
-  // Fixed scale - no adjustment
+  const [canvasDimensions] = useState({ width: 600, height: 600 }); // Square canvas
+  // Fixed scale - adjust to -8 to 8 range
   const scale = {
-    x: { min: 0, max: 10 },
-    y: { min: 0, max: 10 }
+    x: { min: -8, max: 8 },
+    y: { min: -8, max: 8 }
   };
   
   // Check backend health on component mount
@@ -95,8 +95,8 @@ function LinReg() {
     ctx.lineWidth = 0.5;
     
     // Draw horizontal grid lines
-    for (let i = 0; i <= 10; i++) {
-      const y = canvas.height - (i / 10) * canvas.height;
+    for (let i = 0; i <= 16; i++) {
+      const y = canvas.height - (i / 16) * canvas.height;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(canvas.width, y);
@@ -104,30 +104,52 @@ function LinReg() {
     }
     
     // Draw vertical grid lines
-    for (let i = 0; i <= 10; i++) {
-      const x = (i / 10) * canvas.width;
+    for (let i = 0; i <= 16; i++) {
+      const x = (i / 16) * canvas.width;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, canvas.height);
       ctx.stroke();
     }
     
+    // Draw axes with dotted lines
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]); // Dotted line pattern
+
+    // X-axis (horizontal line at y=0)
+    const yAxisPos = canvas.height / 2; // y=0 position
+    ctx.beginPath();
+    ctx.moveTo(0, yAxisPos);
+    ctx.lineTo(canvas.width, yAxisPos);
+    ctx.stroke();
+    
+    // Y-axis (vertical line at x=0)
+    const xAxisPos = canvas.width / 2; // x=0 position
+    ctx.beginPath();
+    ctx.moveTo(xAxisPos, 0);
+    ctx.lineTo(xAxisPos, canvas.height);
+    ctx.stroke();
+    
+    // Reset line dash
+    ctx.setLineDash([]);
+    
     // Draw axes labels
     ctx.fillStyle = '#4b5563';
     ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
     
     // X-axis labels
-    for (let i = 0; i <= 10; i += 2) {
-      const x = (i / 10) * canvas.width;
-      const value = scale.x.min + (i / 10) * (scale.x.max - scale.x.min);
-      ctx.fillText(value.toFixed(1), x - 10, canvas.height - 5);
+    for (let i = 0; i <= 16; i += 2) {
+      const x = (i / 16) * canvas.width;
+      const value = scale.x.min + (i / 16) * (scale.x.max - scale.x.min);
+      ctx.fillText(value.toFixed(0), x - 10, canvas.height - 5);
     }
     
     // Y-axis labels
-    for (let i = 0; i <= 10; i += 2) {
-      const y = canvas.height - (i / 10) * canvas.height;
-      const value = scale.y.min + (i / 10) * (scale.y.max - scale.y.min);
-      ctx.fillText(value.toFixed(1), 5, y + 4);
+    for (let i = 0; i <= 16; i += 2) {
+      const y = canvas.height - (i / 16) * canvas.height;
+      const value = scale.y.min + (i / 16) * (scale.y.max - scale.y.min);
+      ctx.fillText(value.toFixed(0), 5, y + 4);
     }
   };
 
@@ -454,6 +476,108 @@ function LinReg() {
             </div>
           </div>
           
+          {/* Learning Rate Slider - MOVED UP */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label htmlFor="alpha-slider" style={{ 
+              display: 'block', 
+              marginBottom: '0.5rem', 
+              fontWeight: '500', 
+              color: '#4b5563' 
+            }}>
+              Learning Rate (Alpha): {alpha.toFixed(4)}
+            </label>
+            <input
+              id="alpha-slider"
+              type="range"
+              min="0.0001"
+              max="0.12"
+              step="0.0001"
+              value={alpha}
+              onChange={(e) => setAlpha(parseFloat(e.target.value))}
+              style={{ width: '100%' }}
+            />
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              fontSize: '0.8rem', 
+              color: '#6b7280',
+              marginTop: '0.25rem'
+            }}>
+              <span>0.0001 (Slow learning)</span>
+              <span>0.12 (Fast learning)</span>
+            </div>
+            
+            {isHighAlpha && (
+              <div style={{
+                marginTop: '0.5rem',
+                padding: '0.5rem',
+                backgroundColor: '#FEF2F2',
+                borderRadius: '0.375rem',
+                borderLeft: '3px solid #EF4444',
+                color: '#B91C1C',
+                fontSize: '0.875rem'
+              }}>
+                <strong>Warning:</strong> High learning rates may cause exploding gradients and divergence. 
+                Values below 0.1 are recommended for most datasets.
+              </div>
+            )}
+          </div>
+          
+          {/* Iterations Slider - MOVED UP */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label htmlFor="iterations-slider" style={{ 
+              display: 'block', 
+              marginBottom: '0.5rem', 
+              fontWeight: '500', 
+              color: '#4b5563' 
+            }}>
+              Max Iterations: {iterations}
+            </label>
+            <input
+              id="iterations-slider"
+              type="range"
+              min="1"
+              max="500"
+              step="1"
+              value={iterations} 
+              onChange={(e) => setIterations(parseInt(e.target.value))}
+              style={{ width: '100%' }}
+            />
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              fontSize: '0.8rem', 
+              color: '#6b7280',
+              marginTop: '0.25rem'
+            }}>
+              <span>1 (Fast but might not converge)</span>
+              <span>500 (More accurate)</span>
+            </div>
+          </div>
+          
+          {/* Run Regression Button - MOVED UP */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <button 
+              onClick={handleRunModel}
+              disabled={loading || backendStatus === "disconnected"}
+              style={{
+                width: '100%',
+                backgroundColor: loading ? '#93c5fd' : '#3b82f6',
+                color: 'white',
+                padding: '12px',
+                fontSize: '1.1rem',
+                fontWeight: '500',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: loading ? 'wait' : 'pointer',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                opacity: (loading || backendStatus === "disconnected") ? 0.7 : 1
+              }}
+            >
+              {loading ? 'Running...' : 'Run Regression'}
+            </button>
+          </div>
+          
           <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem' }}>Data Points Table</h3>
           <div style={{ 
             marginBottom: '1.5rem',
@@ -542,107 +666,6 @@ function LinReg() {
               }}
             >
               + Add Data Point
-            </button>
-          </div>
-          
-          {/* Learning Rate Slider */}
-          <div style={{ marginTop: '1.5rem' }}>
-            <label htmlFor="alpha-slider" style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontWeight: '500', 
-              color: '#4b5563' 
-            }}>
-              Learning Rate (Alpha): {alpha.toFixed(4)}
-            </label>
-            <input
-              id="alpha-slider"
-              type="range"
-              min="0.0001"
-              max="0.12"
-              step="0.0001"
-              value={alpha}
-              onChange={(e) => setAlpha(parseFloat(e.target.value))}
-              style={{ width: '100%' }}
-            />
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              fontSize: '0.8rem', 
-              color: '#6b7280',
-              marginTop: '0.25rem'
-            }}>
-              <span>0.0001 (Slow learning)</span>
-              <span>0.12 (Fast learning)</span>
-            </div>
-            
-            {isHighAlpha && (
-              <div style={{
-                marginTop: '0.5rem',
-                padding: '0.5rem',
-                backgroundColor: '#FEF2F2',
-                borderRadius: '0.375rem',
-                borderLeft: '3px solid #EF4444',
-                color: '#B91C1C',
-                fontSize: '0.875rem'
-              }}>
-                <strong>Warning:</strong> High learning rates may cause exploding gradients and divergence. 
-                Values below 0.1 are recommended for most datasets.
-              </div>
-            )}
-          </div>
-          
-          {/* Iterations Slider */}
-          <div style={{ marginTop: '1.5rem' }}>
-            <label htmlFor="iterations-slider" style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontWeight: '500', 
-              color: '#4b5563' 
-            }}>
-              Max Iterations: {iterations}
-            </label>
-            <input
-              id="iterations-slider"
-              type="range"
-              min="1"
-              max="500"
-              step="1"
-              value={iterations} 
-              onChange={(e) => setIterations(parseInt(e.target.value))}
-              style={{ width: '100%' }}
-            />
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              fontSize: '0.8rem', 
-              color: '#6b7280',
-              marginTop: '0.25rem'
-            }}>
-              <span>1 (Fast but might not converge)</span>
-              <span>500 (More accurate)</span>
-            </div>
-          </div>
-          
-          <div style={{ marginTop: '1.5rem' }}>
-            <button 
-              onClick={handleRunModel}
-              disabled={loading || backendStatus === "disconnected"}
-              style={{
-                width: '100%',
-                backgroundColor: loading ? '#93c5fd' : '#3b82f6',
-                color: 'white',
-                padding: '12px',
-                fontSize: '1.1rem',
-                fontWeight: '500',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: loading ? 'wait' : 'pointer',
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                opacity: (loading || backendStatus === "disconnected") ? 0.7 : 1
-              }}
-            >
-              {loading ? 'Running...' : 'Run Regression'}
             </button>
           </div>
         </div>

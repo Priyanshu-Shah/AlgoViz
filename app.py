@@ -316,7 +316,6 @@ def knn_decision_boundary():
         print(f"Traceback: {error_traceback}")
         return jsonify({"error": str(e), "traceback": error_traceback}), 500
 
-# K-means endpoints
 @app.route('/api/kmeans', methods=['POST'])
 def kmeans_clustering():
     data = request.json

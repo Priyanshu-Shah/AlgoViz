@@ -15,7 +15,7 @@ def predict_single_point(data, predict_point, n_neighbors=5):
     Predict the class or value of a single point using KNN
     
     Parameters:
-    data (dict): Contains 'X' and 'y' as lists of lists or numpy arrays
+    data (dict): Contains 'X', 'y', and 'mode' ('classification' or 'regression')
     predict_point (list): The point to predict [x1, x2]
     n_neighbors (int): Number of neighbors for KNN
     
@@ -27,6 +27,11 @@ def predict_single_point(data, predict_point, n_neighbors=5):
         X = np.array(data['X'], dtype=float)
         y_orig = np.array(data['y'])
         predict_point = np.array(predict_point, dtype=float).reshape(1, -1)
+        mode = data.get('mode', 'classification')  # Default to classification if not specified
+        
+        print(f"Predict point: {predict_point.tolist()[0]}")
+        print(f"n_neighbors: {n_neighbors}")
+        print(f"Mode: {mode}")
         
         # Validate inputs
         if X.shape[0] < 1:
@@ -35,24 +40,20 @@ def predict_single_point(data, predict_point, n_neighbors=5):
         if X.shape[1] != predict_point.shape[1]:
             return {"error": f"Prediction point has {predict_point.shape[1]} features, but training data has {X.shape[1]} features"}
         
-        # Explicitly check for classification vs regression by examining unique y values
-        unique_y = np.unique(y_orig)
-        
-        # If we only have a small number of unique values (like 2 for binary classification)
-        # AND they are all close to integers, treat as classification
-        if len(unique_y) <= 5 and all(abs(float(val) - round(float(val))) < 0.01 for val in unique_y):
+        # Use explicit mode from frontend instead of trying to detect it
+        if mode == 'classification':
             print("Using CLASSIFICATION mode")
-            # For classification, convert all values to strings for consistency
-            y = np.array([str(int(float(val))) for val in y_orig])
+            # For classification, strings are fine - ensure they're strings
+            y = np.array([str(val) for val in y_orig])
             
-            # Train classification model with string classes
+            # Train classification model
             model = KNeighborsClassifier(n_neighbors=min(n_neighbors, X.shape[0]))
             model.fit(X, y)
             
             # Make prediction
             predicted_class = str(model.predict(predict_point)[0])
             
-            print(f"Classification prediction: {predicted_class} (string)")
+            print(f"Classification prediction: {predicted_class}")
             
             return {
                 'predicted_class': predicted_class
@@ -87,7 +88,7 @@ def generate_decision_boundary(data, n_neighbors=5):
     Generate a decision boundary visualization for KNN
     
     Parameters:
-    data (dict): Contains 'X' and 'y' as lists of lists or numpy arrays
+    data (dict): Contains 'X', 'y', and 'mode' ('classification' or 'regression')
     n_neighbors (int): Number of neighbors for KNN
     
     Returns:
@@ -96,7 +97,11 @@ def generate_decision_boundary(data, n_neighbors=5):
     try:
         # Convert to numpy arrays
         X = np.array(data['X'], dtype=float)
-        y = np.array(data['y'])
+        y_orig = np.array(data['y'])
+        mode = data.get('mode', 'classification')  # Default to classification if not specified
+        
+        print(f"Generating decision boundary with mode: {mode}")
+        print(f"y sample: {y_orig[:5]}")
         
         # Validate inputs
         if X.shape[0] < 5:
@@ -104,63 +109,120 @@ def generate_decision_boundary(data, n_neighbors=5):
             
         if X.shape[1] != 2:
             return {"error": "Decision boundary visualization requires exactly 2 features"}
-            
-        # Check if we're doing classification or regression
-        is_regression = False
-        try:
-            float_y = y.astype(float)
-            is_regression = True
-            # For regression, use a KNeighborsRegressor
-            model = KNeighborsRegressor(n_neighbors=min(n_neighbors, X.shape[0]))
-            model.fit(X, float_y)
-        except (ValueError, TypeError):
-            # For classification, use a KNeighborsClassifier
-            model = KNeighborsClassifier(n_neighbors=min(n_neighbors, X.shape[0]))
-            model.fit(X, y)
-            
-        # Create a plot of the decision boundary
-        plt.figure(figsize=(8, 8))
-            
+        
         # Create a mesh grid
         h = 0.1  # Step size in the mesh
         x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
         y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
+        
+        # Ensure we cover the -8 to 8 range to match frontend
+        x_min = min(x_min, -8)
+        x_max = max(x_max, 8)
+        y_min = min(y_min, -8)
+        y_max = max(y_max, 8)
+        
         xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
         
-        # Predict on the mesh grid
-        Z = model.predict(np.c_[xx.ravel(), yy.ravel()])
+        # Create a plot of the decision boundary
+        plt.figure(figsize=(8, 8))
         
-        # Reshape the prediction results to match the grid
-        Z = Z.reshape(xx.shape)
-        
-        if is_regression:
+        if mode == 'regression':
+            print("Processing REGRESSION boundary")
+            # For regression, ensure values are float
+            y = np.array([float(val) for val in y_orig])
+            
+            model = KNeighborsRegressor(n_neighbors=min(n_neighbors, X.shape[0]))
+            model.fit(X, y)
+            
+            # Predict on the mesh grid
+            Z = model.predict(np.c_[xx.ravel(), yy.ravel()])
+            Z = Z.reshape(xx.shape)
+            
             # For regression, use a continuous colormap
-            plt.contourf(xx, yy, Z, 50, cmap='viridis', alpha=0.5)
+            plt.contourf(xx, yy, Z, 50, cmap='viridis', alpha=0.8)
             plt.colorbar(label='Predicted Value')
+            plt.title(f'KNN Regression Decision Regions (k={n_neighbors})')
             
-            # Plot training points with color based on value
-            sc = plt.scatter(X[:, 0], X[:, 1], c=float_y, cmap='viridis', 
-                             edgecolor='k', s=80, alpha=0.7)
+        else:  # classification
+            print("Processing CLASSIFICATION boundary")
+            # For classification, ensure values are strings
+            y = np.array([str(val) for val in y_orig])
             
-            plt.title(f'KNN Regression (k={n_neighbors})')
+            # Convert string classes to integers for contour plotting
+            # This is the key change to fix the error
+            unique_classes = np.unique(y)
+            class_to_num = {cls: i for i, cls in enumerate(unique_classes)}
+            y_numeric = np.array([class_to_num[cls] for cls in y])
             
-        else:
-            # For classification, use discrete colors for classes
-            classes = np.unique(y)
-            cmap = plt.cm.coolwarm if len(classes) <= 2 else plt.cm.viridis
+            model = KNeighborsClassifier(n_neighbors=min(n_neighbors, X.shape[0]))
+            model.fit(X, y)  # Fit with string classes
             
-            plt.contourf(xx, yy, Z, alpha=0.5, cmap=cmap)
+            # Predict on the mesh grid - get string predictions
+            Z_strings = model.predict(np.c_[xx.ravel(), yy.ravel()])
             
-            # Plot training points with color based on class
-            colors = list(mcolors.TABLEAU_COLORS)[:len(classes)]
+            # Convert to numeric for plotting
+            Z_numeric = np.array([class_to_num[cls] for cls in Z_strings])
+            Z_numeric = Z_numeric.reshape(xx.shape)
             
-            for i, cls in enumerate(classes):
-                idx = np.where(y == cls)
-                plt.scatter(X[idx, 0], X[idx, 1], c=[colors[i]], 
-                            label=f'Class {cls}', edgecolor='k', s=80, alpha=0.7)
-                
-            plt.title(f'KNN Classification (k={n_neighbors})')
-            plt.legend()
+            # Use a colormap that works well with 3 classes
+            if len(unique_classes) <= 2:
+                colors = ['#3b82f6', '#ef4444']
+                cmap = mcolors.ListedColormap(colors[:len(unique_classes)])
+            elif len(unique_classes) == 3:
+                # Custom colormap for 3 classes: blue, red, green
+                colors = ['#3b82f6', '#ef4444', '#22c55e']
+                cmap = mcolors.ListedColormap(colors[:len(unique_classes)])
+            else:
+                cmap = plt.cm.tab10
+            
+            # Draw decision boundaries with SOLID COLORS using numeric Z values
+            plt.contourf(xx, yy, Z_numeric, levels=len(unique_classes)-1, alpha=0.7, cmap=cmap)
+            
+            # Add thin black contour lines to show the exact boundaries between regions
+            plt.contour(xx, yy, Z_numeric, levels=len(unique_classes)-1, colors='k', linewidths=0.5, alpha=0.5)
+            
+            # Add grid lines to match frontend
+            plt.grid(color='gray', linestyle=':', linewidth=0.5, alpha=0.3)
+            
+            # Add axis lines through the origin
+            plt.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+            plt.axvline(x=0, color='gray', linestyle='--', alpha=0.5)
+            
+            plt.title(f'KNN Classification Decision Boundaries (k={n_neighbors})')
+            
+            # Add a custom legend that matches the frontend colors
+            from matplotlib.patches import Patch
+            legend_elements = []
+            color_map = {
+                '1': '#3b82f6',  # Blue
+                '2': '#ef4444',  # Red
+                '3': '#22c55e'   # Green
+            }
+            
+            # Create legend based on original class labels, not numeric values
+            for cls in unique_classes:
+                if cls in color_map:
+                    color = color_map[cls]
+                    legend_elements.append(Patch(facecolor=color, alpha=0.7, 
+                                               label=f'Class {cls}'))
+                else:
+                    # Use index in unique_classes to determine color if not in map
+                    idx = np.where(unique_classes == cls)[0][0]
+                    if idx < len(colors):
+                        color = colors[idx]
+                        legend_elements.append(Patch(facecolor=color, alpha=0.7, 
+                                              label=f'Class {cls}'))
+            
+            if legend_elements:
+                plt.legend(handles=legend_elements, loc='upper right')
+        
+        # Set axis limits to match frontend (-8 to 8)
+        plt.xlim(-8, 8)
+        plt.ylim(-8, 8)
+        
+        # Add tick marks at regular intervals
+        plt.xticks(range(-8, 9, 2))
+        plt.yticks(range(-8, 9, 2))
         
         plt.xlabel('Feature 1')
         plt.ylabel('Feature 2')
