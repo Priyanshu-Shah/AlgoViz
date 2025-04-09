@@ -9,6 +9,7 @@ import KMeans from './pages/KMeans';
 import About from './pages/About';
 import Docs from './pages/Docs';
 import PCA from './pages/PCA';
+import SVM from './pages/SVM';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
           <Route path="/about" element={<About />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/pca" element={<PCA />} />
+          <Route path='/svm' element={<SVM />} />
         </Routes>
       </MainLayout>
     </Router>

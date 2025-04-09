@@ -2,16 +2,14 @@
 import matplotlib
 matplotlib.use('Agg')  # Use Agg backend (non-interactive)
 import numpy as np
-from flask import Flask, jsonify, request, send_from_directory
-from flask_cors import CORS
+from flask import Flask, jsonify, request # type: ignore
+from flask_cors import CORS # type: ignore
 import json
 import os
 import sys
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
-
-# Make sure the models directory is in the Python path
+CORS(app)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
@@ -20,64 +18,13 @@ from models.linReg import run_linear_regression
 from models.knn import predict_single_point, generate_decision_boundary
 from models.kmeans import run_kmeans, generate_clustering_data
 from models.PCA import run_pca, generate_pca_data  
-from models.DTrees import (run_decision_tree_classification, run_decision_tree_regression, 
-                          predict_data_points, generate_sample_classification_data, 
-                          generate_sample_regression_data, generate_tree_with_highlighted_path)
+from models.DTrees import (run_decision_tree_classification, run_decision_tree_regression, generate_tree_visualization,
+                          predict_data_points, generate_sample_classification_data, generate_optimized_decision_boundary,
+                          generate_sample_regression_data, generate_tree_with_highlighted_path, generate_regression_surface)
+from models.SVM import run_svm
 
-# Import the sample data generator
-try:
-    from datasets.sample_data import generate_linear_data
-except ImportError:
-    # Create the datasets directory if it doesn't exist
-    os.makedirs(os.path.join(current_dir, 'datasets'), exist_ok=True)
-    
-    # Create a simple sample_data.py file if it doesn't exist
-    sample_data_path = os.path.join(current_dir, 'datasets', 'sample_data.py')
-    if not os.path.exists(sample_data_path):
-        with open(sample_data_path, 'w') as f:
-            f.write('''import numpy as np
-
-def generate_linear_data(n_samples=100, noise=10.0, seed=42):
-    """
-    Generate sample data for linear regression with controlled noise
-    
-    Parameters:
-    n_samples (int): Number of samples to generate
-    noise (float): Amount of noise to add
-    seed (int): Random seed for reproducibility
-    
-    Returns:
-    dict: Dictionary with 'X' and 'y' keys containing the data
-    """
-    np.random.seed(seed)
-    
-    # Generate X values
-    X = np.linspace(0, 10, n_samples)
-    
-    # True relationship: y = 2x + 5 + noise
-    true_coef = 2.0
-    true_intercept = 5.0
-    
-    # Generate y values with noise
-    y = true_coef * X + true_intercept + np.random.normal(0, noise, n_samples)
-    
-    return {
-        'X': X.tolist(),
-        'y': y.tolist(),
-        'true_coef': true_coef,
-        'true_intercept': true_intercept
-    }
-''')
-    
-    # Create an __init__.py file in the datasets directory
-    with open(os.path.join(current_dir, 'datasets', '__init__.py'), 'w') as f:
-        f.write('# Datasets package initialization\n')
-    
-    # Now try to import again
-    from datasets.sample_data import generate_linear_data
-
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from datasets.sample_data import generate_linear_data
 
 # Health check endpoint - make sure this matches what the frontend is calling
 @app.route('/api/health', methods=['GET'])
@@ -205,8 +152,62 @@ def linear_regression():
             
         return jsonify(error_response), 500
 
+@app.route('/api/svm', methods=['POST'])
+def svm():
+    data = request.json
+    try:
+        # Log incoming data for debugging
+        print(f"Received API request for linear regression")
+        print(f"Request data type: {type(data)}")
+        print(f"Request data content: {data}")
+
+        # Validate input data
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "Invalid request format. Expected JSON object"}), 400
+            
+        if 'X' not in data or 'y' not in data:
+            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
+            
+        if not isinstance(data['X'], list) or not isinstance(data['y'], list):
+            return jsonify({"error": "X and y must be arrays/lists"}), 400
+        
+        if len(data['X']) < 3:
+            return jsonify({"error": "At least 3 data points are required for SVM"}), 400
+        
+        if len(data['X']) != len(data['y']):
+            return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
+        
+        # Call the SVM model function (assuming it's implemented)
+        result = run_svm(data)
+
+        if result is None :
+            return jsonify({"error": "Model returned None"}), 500
+        
+        # Check for error field    
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify(result), 400
+        
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Exception in SVM endpoint: {str(e)}")
+        print(f"Traceback: {error_details}")
+        
+        return jsonify({"error": str(e), "traceback": error_details}), 500
+
 @app.route('/api/linear-regression/sample', methods=['GET'])
 def linear_regression_sample():
+    try:
+        n_samples = request.args.get('n_samples', default=30, type=int)
+        noise = request.args.get('noise', default=5.0, type=float)
+        data = generate_linear_data(n_samples=n_samples, noise=noise)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/api/svm/sample', methods=['GET'])
+def svm_sample():
     try:
         n_samples = request.args.get('n_samples', default=30, type=int)
         noise = request.args.get('noise', default=5.0, type=float)
@@ -221,7 +222,7 @@ def knn_classification():
     data = request.json
     try:
         n_neighbors = data.get('n_neighbors', 5)
-        result = run_knn_classification(data, n_neighbors=n_neighbors)
+        result = predict_single_point(data, n_neighbors=n_neighbors)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -231,7 +232,7 @@ def knn_regression():
     data = request.json
     try:
         n_neighbors = data.get('n_neighbors', 5)
-        result = run_knn_regression(data, n_neighbors=n_neighbors)
+        result = generate_decision_boundary(data, n_neighbors=n_neighbors)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -558,7 +559,7 @@ def dtree_regression():
     except Exception as e:
         import traceback
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
-# Add this to your app.py file - create a new endpoint for api/dtree/predict that handles CORS
+
 @app.route('/api/dtree/predict', methods=['POST', 'OPTIONS'])
 def dtree_predict_new():
     if request.method == 'OPTIONS':
@@ -682,39 +683,39 @@ def dtree_predict_new():
         print(f"Traceback: {error_traceback}")
         return jsonify({"error": str(e), "traceback": error_traceback}), 400
 
-@app.route('/api/dtree-predict', methods=['POST'])
-def dtree_predict():
-    data = request.json
-    try:
-        # Extract training data and points to predict
-        training_data = {'X': data.get('X', []), 'y': data.get('y', [])}
-        predict_points = data.get('predict_points', [])
+# @app.route('/api/dtree-predict', methods=['POST'])
+# def dtree_predict():
+#     data = request.json
+#     try:
+#         # Extract training data and points to predict
+#         training_data = {'X': data.get('X', []), 'y': data.get('y', [])}
+#         predict_points = data.get('predict_points', [])
         
-        # Get parameters with default values
-        max_depth = data.get('max_depth', 3)
-        min_samples_split = data.get('min_samples_split', 2)
-        criterion = data.get('criterion', 'gini')
+#         # Get parameters with default values
+#         max_depth = data.get('max_depth', 3)
+#         min_samples_split = data.get('min_samples_split', 2)
+#         criterion = data.get('criterion', 'gini')
         
-        # Validate inputs
-        if not training_data['X'] or not training_data['y']:
-            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
+#         # Validate inputs
+#         if not training_data['X'] or not training_data['y']:
+#             return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
         
-        if not predict_points:
-            return jsonify({"error": "No prediction points provided"}), 400
+#         if not predict_points:
+#             return jsonify({"error": "No prediction points provided"}), 400
         
-        if len(training_data['X']) != len(training_data['y']):
-            return jsonify({"error": f"Length mismatch: X has {len(training_data['X'])} elements, y has {len(training_data['y'])} elements"}), 400
+#         if len(training_data['X']) != len(training_data['y']):
+#             return jsonify({"error": f"Length mismatch: X has {len(training_data['X'])} elements, y has {len(training_data['y'])} elements"}), 400
         
-        # Make predictions
-        result = predict_data_points(training_data, predict_points, max_depth, min_samples_split, criterion)
+#         # Make predictions
+#         result = predict_data_points(training_data, predict_points, max_depth, min_samples_split, criterion)
         
-        if 'error' in result:
-            return jsonify(result), 400
+#         if 'error' in result:
+#             return jsonify(result), 400
             
-        return jsonify(result)
-    except Exception as e:
-        import traceback
-        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+#         return jsonify(result)
+#     except Exception as e:
+#         import traceback
+#         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 
 @app.route('/api/dtree/sample_data', methods=['POST'])
@@ -847,7 +848,6 @@ def dtree_train():
         return response
         
     data = request.json
-    print("Received data:", data)  # Add this debug print
     
     try:
         # Extract training data
@@ -888,9 +888,6 @@ def dtree_train():
                 except KeyError as e:
                     return jsonify({"error": f"Missing key in point {point}: {e}"}), 400
             
-            # Debug print
-            print(f"Processed X: {X}")
-            print(f"Processed y: {y}")
             
             # Critical: ensure unique classes by manually converting to numeric labels
             unique_classes = list(set(y))

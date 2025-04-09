@@ -107,6 +107,18 @@ export const getLinearRegressionSampleData = async (n_samples = 30, noise = 5.0)
   return response.data;
 };
 
+export const getSVMSampleData = async (n_samples = 30, noise = 0.1) => {
+  const response = await axios.get(
+    `${API_URL}/svm/sample?n_samples=${n_samples}&noise=${noise}`
+  );
+  return response.data;
+};
+
+export const runSVM = async (data) => {
+  const response = await axios.post(`${API_URL}/svm`, data);
+  return response.data;
+}
+
 export const runKnnClassification = async (data) => {
   const response = await axios.post(`${API_URL}/knn-classification`, data);
   return response.data;

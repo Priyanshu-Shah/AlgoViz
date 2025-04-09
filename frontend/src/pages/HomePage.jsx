@@ -62,7 +62,7 @@ function HomePage() {
       description: "Classify data by finding optimal hyperplanes",
       path: "/svm",
       image: "https://cdn5.vectorstock.com/i/1000x1000/76/89/support-machine-svm-algorithm-color-icon-vector-50297689.jpg",
-      implemented: false
+      implemented: true
     },
     {
       name: "Artificial Neural Network",
