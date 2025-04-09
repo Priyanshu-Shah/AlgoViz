@@ -16,7 +16,8 @@ function PCA() {
   
   // Canvas ref and state for interactive plotting
   const canvasRef = useRef(null);
-  const [canvasDimensions] = useState({ width: 550, height: 400 });
+  const [canvasDimensions] = useState({ width: 600, height: 600 });
+  const [isProjectionActive, setIsProjectionActive] = useState(false);
   // Fixed scale - no adjustment
   const scale = {
     x: { min: -5, max: 5 },
@@ -53,39 +54,32 @@ function PCA() {
   // Draw canvas with points and PCA components
   useEffect(() => {
     if (!canvasRef.current) return;
-    
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    
+
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Draw grid and axes
     drawGrid(ctx, canvas);
-    
+
     // Get valid points
     const points = getValidPoints();
-    
+
     // Draw points
     drawPoints(ctx, canvas, points);
-    
+
     // Draw principal components if results exist
-    if (results && results.components && results.mean) {
-      drawPrincipalComponents(ctx, canvas, results.components, results.mean, points);
-      
-      // Draw reconstructed points if available
-      if (results.reconstructed) {
-        drawReconstructedPoints(ctx, canvas, results.reconstructed);
-      }
+    if (results && results.components && results.original_mean) {
+        drawPrincipalComponents(ctx, canvas, results.components, results.original_mean, points);
+
+        // Draw reconstructed points if available
+        if (results.reconstructed) {
+            drawReconstructedPoints(ctx, canvas, results.reconstructed);
+        }
     }
-    
-    // Debug console logs
-    console.log("Canvas redrawn with:", {
-      points: points.length,
-      results: results ? "yes" : "no"
-    });
-    
-  }, [dataPairs, results]);
+}, [dataPairs, results]);
 
   // Helper function to draw grid and axes
   const drawGrid = (ctx, canvas) => {
@@ -157,13 +151,13 @@ function PCA() {
       const x = ((point[0] - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
       const y = canvas.height - ((point[1] - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
       
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.5)'; // Red color for reconstructed points
-      ctx.fill();
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      // ctx.beginPath();
+      // ctx.arc(x, y, 6, 0, Math.PI * 2);
+      // ctx.fillStyle = 'rgb(255, 255, 255)'; // Red color for reconstructed points
+      // ctx.fill();
+      // ctx.strokeStyle = '#000';
+      // ctx.lineWidth = 0;
+      // ctx.stroke();
       
       // Draw dotted line connecting to original points (if results.original exists)
       if (results && results.original) {
@@ -179,7 +173,7 @@ function PCA() {
           ctx.setLineDash([2, 2]);
           ctx.moveTo(x, y);
           ctx.lineTo(x2, y2);
-          ctx.strokeStyle = 'rgba(107, 114, 128, 0.7)'; // Gray color for connecting lines
+          ctx.strokeStyle = 'rgba(253, 253, 253, 0.7)'; // Gray color for connecting lines
           ctx.stroke();
           ctx.setLineDash([]);
         }
@@ -188,70 +182,91 @@ function PCA() {
   };
 
   // Helper function to draw principal components
-  const drawPrincipalComponents = (ctx, canvas, components, mean, points) => {
-    const meanX = ((mean[0] - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
-    const meanY = canvas.height - ((mean[1] - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-    
-    // Calculate scaling factor based on points spread
-    let maxDist = 0;
-    points.forEach(point => {
-      const dx = point.x - mean[0];
-      const dy = point.y - mean[1];
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      maxDist = Math.max(maxDist, dist);
-    });
-    
-    const scaleFactor = Math.min(canvas.width, canvas.height) * 0.4 / (maxDist || 1);
-    
-    // Draw PC1 (first principal component)
+  const drawPrincipalComponents = (ctx, canvas, components, originalMean, points) => {
+    const meanX = ((originalMean[0] - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+    const meanY = canvas.height - ((originalMean[1] - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+  
     const pc1 = components[0];
+    const pc2 = components[1];
+  
+    // Scale factor for drawing principal components
+    const scaleFactor = Math.min(canvas.width, canvas.height) * 0.4;
+  
+    // Draw PCA1 (First Principal Component)
     const pc1x = meanX + pc1[0] * scaleFactor;
     const pc1y = meanY - pc1[1] * scaleFactor;
-    
     ctx.beginPath();
-    ctx.moveTo(meanX - pc1[0] * scaleFactor, meanY + pc1[1] * scaleFactor);
+    ctx.moveTo(meanX, meanY);
     ctx.lineTo(pc1x, pc1y);
-    ctx.strokeStyle = 'rgba(16, 185, 129, 1)'; // Green color for PC1
+    ctx.strokeStyle = 'black';
     ctx.lineWidth = 3;
     ctx.stroke();
-    
-    // Add arrow to PC1
-    drawArrow(ctx, pc1x, pc1y, pc1[0], pc1[1], 10);
-    
-    // Draw PC2 (second principal component)
-    const pc2 = components[1];
+    drawArrow(ctx, pc1x, pc1y, pc1[0], pc1[1], 10); // Draw arrowhead for PCA1
+  
+    // Draw PCA2 (Second Principal Component)
     const pc2x = meanX + pc2[0] * scaleFactor;
     const pc2y = meanY - pc2[1] * scaleFactor;
-    
     ctx.beginPath();
-    ctx.moveTo(meanX - pc2[0] * scaleFactor, meanY + pc2[1] * scaleFactor);
+    ctx.moveTo(meanX, meanY);
     ctx.lineTo(pc2x, pc2y);
-    ctx.strokeStyle = 'rgba(139, 92, 246, 1)'; // Purple color for PC2
+    ctx.strokeStyle = 'indigo';
     ctx.lineWidth = 3;
     ctx.stroke();
-    
-    // Add arrow to PC2
-    drawArrow(ctx, pc2x, pc2y, pc2[0], pc2[1], 10);
-    
-    // Draw mean point
+    drawArrow(ctx, pc2x, pc2y, pc2[0], pc2[1], 10); // Draw arrowhead for PCA2
+  
+    // Draw the mean point
     ctx.beginPath();
     ctx.arc(meanX, meanY, 6, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(251, 191, 36, 0.7)'; // Yellow color for mean
+    ctx.fillStyle = 'rgba(251, 191, 36, 0.7)';
     ctx.fill();
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1;
     ctx.stroke();
-    
-    // Add text labels
+  
     ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillStyle = 'rgba(16, 185, 129, 1)';
+    ctx.fillStyle = 'black';
     ctx.fillText('PC1', pc1x + 5, pc1y - 5);
-    
-    ctx.fillStyle = 'rgba(139, 92, 246, 1)';
+    ctx.fillStyle = 'indigo';
     ctx.fillText('PC2', pc2x + 5, pc2y - 5);
-    
     ctx.fillStyle = 'rgba(251, 191, 36, 1)';
     ctx.fillText('Mean', meanX + 10, meanY);
+  
+    // Draw projections if active
+    if (isProjectionActive) {
+      points.forEach(point => {
+        const dx = point.x - originalMean[0];
+        const dy = point.y - originalMean[1];
+  
+        // Project point onto PCA1
+        const projectionLength = dx * pc1[0] + dy * pc1[1];
+        const projectedX = originalMean[0] + projectionLength * pc1[0];
+        const projectedY = originalMean[1] + projectionLength * pc1[1];
+  
+        // Convert data coordinates to screen coordinates
+        const x = ((point.x - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+        const y = canvas.height - ((point.y - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+        const projX = ((projectedX - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+        const projY = canvas.height - ((projectedY - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+  
+        // Draw dotted line from original point to projected point
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.moveTo(x, y);
+        ctx.lineTo(projX, projY);
+        ctx.strokeStyle = 'rgba(107, 114, 128, 0.7)';
+        ctx.stroke();
+        ctx.setLineDash([]);
+  
+        // Draw projected point
+        ctx.beginPath();
+        ctx.arc(projX, projY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 51, 18, 0.7)';
+        ctx.fill();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+    }
   };
   
   // Helper function to draw arrows
@@ -271,6 +286,7 @@ function PCA() {
     ctx.lineTo(x - size * dirX + size * 0.5 * perpX, y + size * dirY - size * 0.5 * perpY);
     ctx.lineTo(x - size * dirX - size * 0.5 * perpX, y + size * dirY + size * 0.5 * perpY);
     ctx.closePath();
+    ctx.fillStyle = "black";
     ctx.fill();
   };
 
@@ -331,6 +347,41 @@ function PCA() {
     setDataPairs(newPairs);
   };
 
+  const handleProjectPoints = () => {
+    if (!results || !results.components || !results.original_mean) {
+      console.error("No results available for projecting points.");
+      return;
+    }
+  
+    const pc1 = results.components[0]; // First principal component
+    const mean = results.original_mean; // Mean vector
+  
+    // Calculate projections for each point
+    const projectedPairs = dataPairs
+      .filter(pair => pair.x !== '' && pair.y !== '' && !isNaN(pair.x) && !isNaN(pair.y)) // Filter valid points
+      .map(pair => {
+        const x = parseFloat(pair.x);
+        const y = parseFloat(pair.y);
+  
+        // Calculate projection onto PCA1
+        const dx = x - mean[0];
+        const dy = y - mean[1];
+        const projectionLength = dx * pc1[0] + dy * pc1[1];
+        const projectedX = mean[0] + projectionLength * pc1[0];
+        const projectedY = mean[1] + projectionLength * pc1[1];
+  
+        return {
+          x: projectedX.toFixed(2), // Round to 2 decimal places
+          y: projectedY.toFixed(2)
+        };
+      });
+  
+    // Append projected points to the existing dataPairs
+    setDataPairs([...dataPairs, ...projectedPairs]);
+  
+    // Activate projection mode
+    setIsProjectionActive(true);
+  };
   const handleInputChange = (index, field, value) => {
     const newPairs = [...dataPairs];
     
@@ -386,48 +437,33 @@ function PCA() {
 
   // Update the handleRunModel function for better error logging
   const handleRunModel = async () => {
-    // Filter out empty pairs
+    setIsProjectionActive(false); // Reset projection state
     const validPoints = getValidPoints();
-    
-    // Validate inputs
+  
     if (validPoints.length < 2) {
       setError('Please add at least 2 data points for meaningful PCA');
       return;
     }
-
+  
     setError(null);
     setLoading(true);
-    setResults(null); // Reset results before new request
-
+    setResults(null);
+  
     try {
-      // Prepare data for the API
       const apiData = {
         X: validPoints.map(point => [point.x, point.y])
       };
-
-      console.log('Calling PCA API with URL:', `${API_URL}/pca`);
-      console.log('Calling PCA API with data:', apiData);
-      
+  
       const response = await runPCA(apiData);
-      
+  
       if (response.error) {
         throw new Error(response.error);
       }
-      
-      console.log('PCA Results received:', response);
+  
       setResults(response);
     } catch (err) {
       console.error('PCA Error details:', err);
-      
-      let errorMessage = 'An unknown error occurred';
-      
-      if (err.message && err.message.includes('Network Error')) {
-        errorMessage = 'Network error: Cannot connect to the server. Please check if the backend is running and verify the endpoint URLs.';
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-      
-      setError(`Error: ${errorMessage}. Please try again.`);
+      setError(`Error: ${err.message || 'An unknown error occurred'}. Please try again.`);
     } finally {
       setLoading(false);
     }
@@ -633,27 +669,47 @@ function PCA() {
             </button>
           </div>
           
-          <div style={{ marginTop: '1.5rem' }}>
-            <button 
-              onClick={handleRunModel}
-              disabled={loading || backendStatus === "disconnected"}
-              style={{
-                width: '100%',
-                backgroundColor: loading ? '#93c5fd' : '#3b82f6',
-                color: 'white',
-                padding: '12px',
-                fontSize: '1.1rem',
-                fontWeight: '500',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: loading ? 'wait' : 'pointer',
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                opacity: (loading || backendStatus === "disconnected") ? 0.7 : 1
-              }}
-            >
-              {loading ? 'Running...' : 'Compute PCA'}
-            </button>
-          </div>
+          <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
+  <button 
+    onClick={handleRunModel}
+    disabled={loading || backendStatus === "disconnected"}
+    style={{
+      flex: 1,
+      backgroundColor: loading ? '#93c5fd' : '#3b82f6',
+      color: 'white',
+      padding: '12px',
+      fontSize: '1.1rem',
+      fontWeight: '500',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: loading ? 'wait' : 'pointer',
+      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+      opacity: (loading || backendStatus === "disconnected") ? 0.7 : 1
+    }}
+  >
+    {loading ? 'Running...' : 'Compute PCA'}
+  </button>
+  <button 
+    onClick={handleProjectPoints}
+    disabled={!results || loading || backendStatus === "disconnected"}
+    style={{
+      flex: 1,
+      backgroundColor: '#8b5cf6',
+      color: 'white',
+      padding: '12px',
+      fontSize: '1.1rem',
+      fontWeight: '500',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: !results ? 'not-allowed' : 'pointer',
+      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+      opacity: !results ? 0.7 : 1
+    }}
+  >
+    Projecting Points
+  </button>
+</div>
+          
         </div>
 
         <div className="results-section">
@@ -691,8 +747,22 @@ function PCA() {
               }}>
                 <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>Principal Components</div>
                 <div style={{ fontWeight: '500', fontSize: '1.1rem', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ color: 'rgba(16, 185, 129, 1)' }}>PC1: [{results.components[0][0].toFixed(4)}, {results.components[0][1].toFixed(4)}]</span>
-                  <span style={{ color: 'rgba(139, 92, 246, 1)' }}>PC2: [{results.components[1][0].toFixed(4)}, {results.components[1][1].toFixed(4)}]</span>
+                  <span style={{ color: 'rgb(0, 0, 0)' }}>PC1: [{results.components[0][0].toFixed(4)}, {results.components[0][1].toFixed(4)}]</span>
+                  <span style={{ color: 'rgb(12, 12, 12)' }}>PC2: [{results.components[1][0].toFixed(4)}, {results.components[1][1].toFixed(4)}]</span>
+                </div>
+              </div>
+
+              <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>Eigenvalues and Eigenvectors</div>
+              <div style={{ fontWeight: '500', fontSize: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div>
+                  <span style={{ color: 'rgb(16, 16, 16)' }}>Eigenvalue 1: {results.explained_variance[0].toFixed(4)}</span>
+                  <br />
+                  <span style={{ color: 'rgb(3, 3, 3)' }}>Eigenvector 1: [{results.components[0][0].toFixed(4)}, {results.components[0][1].toFixed(4)}]</span>
+                </div>
+                <div>
+                  <span style={{ color: 'rgb(5, 5, 5)' }}>Eigenvalue 2: {results.explained_variance[1].toFixed(4)}</span>
+                  <br />
+                  <span style={{ color: 'rgb(0, 0, 0)' }}>Eigenvector 2: [{results.components[1][0].toFixed(4)}, {results.components[1][1].toFixed(4)}]</span>
                 </div>
               </div>
               
@@ -714,7 +784,7 @@ function PCA() {
                 <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
                   <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Mean Vector</div>
                   <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
-                    [{results.mean[0].toFixed(4)}, {results.mean[1].toFixed(4)}]
+                    [{results.original_mean[0].toFixed(4)}, {results.original_mean[1].toFixed(4)}]
                   </div>
                 </div>
                 
@@ -757,15 +827,15 @@ function PCA() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ width: '12px', height: '12px', backgroundColor: 'rgba(239, 68, 68, 0.5)', borderRadius: '50%', display: 'inline-block' }}></span>
-                    <span style={{ color: '#4b5563', fontSize: '0.9rem' }}>Red points: Reconstructed data (if using 1D projection)</span>
+                    <span style={{ color: '#4b5563', fontSize: '0.9rem' }}>Red points: Projected data (if using 1D projection)</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ width: '12px', height: '12px', backgroundColor: 'rgba(251, 191, 36, 0.7)', borderRadius: '50%', display: 'inline-block' }}></span>
                     <span style={{ color: '#4b5563', fontSize: '0.9rem' }}>Yellow point: Data mean (center)</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ width: '12px', height: '3px', backgroundColor: 'rgba(16, 185, 129, 1)', display: 'inline-block' }}></span>
-                    <span style={{ color: '#4b5563', fontSize: '0.9rem' }}>Green line: First principal component (PC1)</span>
+                    <span style={{ width: '12px', height: '3px', backgroundColor: 'rgb(1, 1, 1)', display: 'inline-block' }}></span>
+                    <span style={{ color: '#4b5563', fontSize: '0.9rem' }}>Black line: First principal component  (PC1)</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ width: '12px', height: '3px', backgroundColor: 'rgba(139, 92, 246, 1)', display: 'inline-block' }}></span>

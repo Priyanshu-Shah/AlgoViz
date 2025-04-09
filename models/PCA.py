@@ -46,8 +46,14 @@ def run_pca(data):
         corr_matrix = df.corr()
         
         # Generate correlation heatmap
-        plt.figure(figsize=(6, 5))
-        sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', linewidths=0.5)
+        plt.figure(figsize=(4, 3))  # Reduce the figure size
+        sns.heatmap(
+            corr_matrix,
+            annot=True, 
+            cmap='coolwarm',  # Keep the same colormap
+            linewidths=0.5, 
+            alpha=0.8  # Make the colors more dilute
+            )
         plt.title('Correlation Matrix')
         
         # Convert heatmap to base64
@@ -57,38 +63,42 @@ def run_pca(data):
         buf.seek(0)
         corr_heatmap = base64.b64encode(buf.read()).decode('utf-8')
         
+        # Compute the mean of the original data
+        original_mean = np.mean(X, axis=0)
+
         # Standardize the data
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
-        
+
         # Create and fit PCA
         pca = PCA(n_components=2)
         X_pca = pca.fit_transform(X_scaled)
-        
+
         # Get principal components and variance info
         components = pca.components_
         explained_variance = pca.explained_variance_
         explained_variance_ratio = pca.explained_variance_ratio_
         mean = pca.mean_
-        
+
         # Reconstruct data using only PC1 (1D projection)
         X_reconstructed_1d = np.dot(X_pca[:, 0:1], components[0:1, :]) + mean
-        
+
         # Transform back to original scale
         X_reconstructed_1d = scaler.inverse_transform(X_reconstructed_1d)
-        
+
         # Convert to correct types for serialization
         result = {
             'components': components.tolist(),
             'explained_variance': explained_variance.tolist(),
             'explained_variance_ratio': explained_variance_ratio.tolist(),
-            'mean': mean.tolist(),
+            'mean': mean.tolist(),  # Normalized mean
+            'original_mean': original_mean.tolist(),  # Mean of the original data
             'original': X.tolist(),
             'transformed': X_pca.tolist(),
             'reconstructed': X_reconstructed_1d.tolist(),
             'corr_heatmap': corr_heatmap
         }
-        
+
         return result
     
     except Exception as e:
