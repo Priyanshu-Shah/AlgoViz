@@ -46,9 +46,9 @@ function HomePage() {
     {
       name: "Decision Tree",
       description: "Make decisions based on hierarchical feature splits",
-      path: "/dec-tree",
+      path: "/d-trees",
       image: "https://static.thenounproject.com/png/1119933-200.png",
-      implemented: false
+      implemented: true
     },
     {
       name: "Random Forest",

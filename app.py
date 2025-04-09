@@ -1,7 +1,7 @@
 # Configure matplotlib first to prevent threading issues
 import matplotlib
 matplotlib.use('Agg')  # Use Agg backend (non-interactive)
-
+import numpy as np
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import json
@@ -20,6 +20,9 @@ from models.linReg import run_linear_regression
 from models.knn import predict_single_point, generate_decision_boundary
 from models.kmeans import run_kmeans, generate_clustering_data
 from models.PCA import run_pca, generate_pca_data  
+from models.DTrees import (run_decision_tree_classification, run_decision_tree_regression, 
+                          predict_data_points, generate_sample_classification_data, 
+                          generate_sample_regression_data, generate_tree_with_highlighted_path)
 
 # Import the sample data generator
 try:
@@ -490,7 +493,652 @@ def pca_sample_data():
         import traceback
         print(f"Error generating PCA sample data: {str(e)}")
         print(traceback.format_exc())
+
+@app.route('/api/dtree-classification', methods=['POST'])
+def dtree_classification():
+    data = request.json
+    try:
+        # Get parameters with default values
+        max_depth = data.get('max_depth', 3)
+        min_samples_split = data.get('min_samples_split', 2)
+        criterion = data.get('criterion', 'gini')
+        
+        # Validate inputs
+        if 'X' not in data or 'y' not in data:
+            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
+        
+        if not isinstance(data['X'], list) or not isinstance(data['y'], list):
+            return jsonify({"error": "X and y must be arrays/lists"}), 400
+        
+        if len(data['X']) < 2:
+            return jsonify({"error": "At least 2 data points are required for classification"}), 400
+        
+        if len(data['X']) != len(data['y']):
+            return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
+        
+        # Run decision tree classification
+        result = run_decision_tree_classification(data, max_depth, min_samples_split, criterion)
+        
+        if 'error' in result:
+            return jsonify(result), 400
+            
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+@app.route('/api/dtree-regression', methods=['POST'])
+def dtree_regression():
+    data = request.json
+    try:
+        # Get parameters with default values
+        max_depth = data.get('max_depth', 3)
+        min_samples_split = data.get('min_samples_split', 2)
+        
+        # Validate inputs
+        if 'X' not in data or 'y' not in data:
+            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
+        
+        if not isinstance(data['X'], list) or not isinstance(data['y'], list):
+            return jsonify({"error": "X and y must be arrays/lists"}), 400
+        
+        if len(data['X']) < 2:
+            return jsonify({"error": "At least 2 data points are required for regression"}), 400
+        
+        if len(data['X']) != len(data['y']):
+            return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
+        
+        # Run decision tree regression
+        result = run_decision_tree_regression(data, max_depth, min_samples_split)
+        
+        if 'error' in result:
+            return jsonify(result), 400
+            
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+# Add this to your app.py file - create a new endpoint for api/dtree/predict that handles CORS
+@app.route('/api/dtree/predict', methods=['POST', 'OPTIONS'])
+def dtree_predict_new():
+    if request.method == 'OPTIONS':
+        # CORS preflight response
+        response = jsonify({})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
+        
+    data = request.json
+    try:
+        # Extract training data and points to predict
+        training_data = data.get('trained_points', [])
+        predict_points = data.get('predict_points', [])
+        
+        # Format the data for the model
+        X = []
+        y = []
+        
+        if data.get('type') == 'classification':
+            for point in training_data:
+                X.append([float(point['x1']), float(point['x2'])])
+                if 'class' in point:
+                    y.append(str(point['class']))
+                elif 'y' in point:
+                    y.append(str(point['y']))
+                    
+            # Process prediction points
+            pred_X = []
+            for point in predict_points:
+                pred_X.append([float(point['x1']), float(point['x2'])])
+                
+            # Get parameters
+            max_depth = data.get('parameters', {}).get('max_depth', 3)
+            min_samples_split = data.get('parameters', {}).get('min_samples_split', 2)
+            criterion = data.get('parameters', {}).get('criterion', 'gini')
+            
+            # Call the model function
+            result = predict_data_points({'X': X, 'y': y}, pred_X, max_depth, min_samples_split, criterion)
+            
+            # Limit image size to avoid HTTP header size issues
+            if 'tree_visualization' in result and len(result['tree_visualization']) > 500000:
+                result['tree_visualization'] = result['tree_visualization'][:500000]
+                print("Warning: Tree visualization was truncated due to size")
+                
+            # Convert NumPy types to Python types
+            def convert_to_python_types(obj):
+                if isinstance(obj, dict):
+                    return {k: convert_to_python_types(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_to_python_types(item) for item in obj]
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, np.bool_):
+                    return bool(obj)
+                else:
+                    return obj
+            
+            result = convert_to_python_types(result)
+            
+            return jsonify(result)
+        else:
+            # Handle regression similarly
+            for point in training_data:
+                X.append([float(point['x1']), float(point['x2'])])
+                if 'value' in point:
+                    y.append(float(point['value']))
+                elif 'y' in point:
+                    y.append(float(point['y']))
+            # Process prediction points
+            pred_X = []
+            for point in predict_points:
+                pred_X.append([float(point['x1']), float(point['x2'])])
+                
+            # Get parameters
+            max_depth = data.get('parameters', {}).get('max_depth', 3)
+            min_samples_split = data.get('parameters', {}).get('min_samples_split', 2)
+            criterion = data.get('parameters', {}).get('criterion', 'gini')
+            
+            # Call the model function
+            result = predict_data_points({'X': X, 'y': y}, pred_X, max_depth, min_samples_split, criterion)
+            
+            # Limit image size to avoid HTTP header size issues
+            if 'tree_visualization' in result and len(result['tree_visualization']) > 500000:
+                result['tree_visualization'] = result['tree_visualization'][:500000]
+                print("Warning: Tree visualization was truncated due to size")
+                
+            # Convert NumPy types to Python types
+            def convert_to_python_types(obj):
+                if isinstance(obj, dict):
+                    return {k: convert_to_python_types(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_to_python_types(item) for item in obj]
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, np.bool_):
+                    return bool(obj)
+                else:
+                    return obj
+            
+            result = convert_to_python_types(result)
+            
+            return jsonify(result)
+                    
+            # Rest of regression code similar to above
+            # ...
+            
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Error in dtree prediction: {str(e)}")
+        print(f"Traceback: {error_traceback}")
+        return jsonify({"error": str(e), "traceback": error_traceback}), 400
+
+@app.route('/api/dtree-predict', methods=['POST'])
+def dtree_predict():
+    data = request.json
+    try:
+        # Extract training data and points to predict
+        training_data = {'X': data.get('X', []), 'y': data.get('y', [])}
+        predict_points = data.get('predict_points', [])
+        
+        # Get parameters with default values
+        max_depth = data.get('max_depth', 3)
+        min_samples_split = data.get('min_samples_split', 2)
+        criterion = data.get('criterion', 'gini')
+        
+        # Validate inputs
+        if not training_data['X'] or not training_data['y']:
+            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
+        
+        if not predict_points:
+            return jsonify({"error": "No prediction points provided"}), 400
+        
+        if len(training_data['X']) != len(training_data['y']):
+            return jsonify({"error": f"Length mismatch: X has {len(training_data['X'])} elements, y has {len(training_data['y'])} elements"}), 400
+        
+        # Make predictions
+        result = predict_data_points(training_data, predict_points, max_depth, min_samples_split, criterion)
+        
+        if 'error' in result:
+            return jsonify(result), 400
+            
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@app.route('/api/dtree/sample_data', methods=['POST'])
+def dtree_sample_data():
+    try:
+        data = request.json
+        data_type = data.get('type', 'classification')
+        count = data.get('count', 40)
+        dataset_type = data.get('dataset_type', 'blobs')
+        n_clusters = data.get('n_clusters', 3)
+        variance = data.get('variance', 0.5)
+        sparsity = data.get('sparsity', 1.0)  # New parameter for regression data sparsity
+        
+        if data_type == 'classification':
+            result = generate_sample_classification_data(
+                dataset_type=dataset_type,
+                n_samples=count,
+                n_clusters=n_clusters,
+                variance=variance
+            )
+        else:
+            # Use the updated regression function with parameters including sparsity
+            result = generate_sample_regression_data(
+                dataset_type=dataset_type,
+                n_samples=count,
+                variance=variance,
+                sparsity=sparsity  # Pass the sparsity parameter
+            )
+                
+        # Convert to points format
+        points = []
+        for i in range(len(result['X'])):
+            points.append({
+                'x1': result['X'][i][0],
+                'x2': result['X'][i][1],
+                'y': result['y'][i] if 'y' in result else str(result['values'][i])
+            })
+            
+        return jsonify({'points': points})
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+@app.route('/api/dtree/sample-regression', methods=['GET'])
+def dtree_sample_regression_data():
+    try:
+        data = generate_sample_regression_data()
+        return jsonify(data)
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/dtree/highlight-path', methods=['POST'])
+def dtree_highlight_path():
+    data = request.json
+    try:
+        # Extract required data
+        training_data = {'X': data.get('X', []), 'y': data.get('y', [])}
+        point = data.get('point', [])
+        path_indices = data.get('path_indices', [])
+        
+        # Get parameters
+        max_depth = data.get('max_depth', 3)
+        min_samples_split = data.get('min_samples_split', 2)
+        criterion = data.get('criterion', 'gini')
+        is_regression = data.get('is_regression', False)
+        
+        # Validate inputs
+        if not training_data['X'] or not training_data['y']:
+            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
+        
+        if not point:
+            return jsonify({"error": "No point provided for path highlighting"}), 400
+        
+        if not path_indices:
+            return jsonify({"error": "No path indices provided"}), 400
+        
+        # Convert data to numpy arrays
+        X = np.array(training_data['X'])
+        y = np.array(training_data['y'])
+        point = np.array(point)
+        
+        # Train the appropriate model
+        if is_regression:
+            model = DecisionTreeRegressor(
+                max_depth=max_depth,
+                min_samples_split=min_samples_split,
+                random_state=42
+            )
+        else:
+            model = DecisionTreeClassifier(
+                max_depth=max_depth,
+                min_samples_split=min_samples_split,
+                criterion=criterion,
+                random_state=42
+            )
+        
+        model.fit(X, y)
+        
+        # Generate tree visualization with highlighted path
+        if is_regression:
+            tree_img = generate_tree_with_highlighted_path(
+                model, point, path_indices, 
+                feature_names=['x1', 'x2'], 
+                regression=True
+            )
+        else:
+            tree_img = generate_tree_with_highlighted_path(
+                model, point, path_indices, 
+                feature_names=['x1', 'x2'], 
+                class_names=np.unique(y)
+            )
+        
+        return jsonify({"tree_visualization": tree_img})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+@app.route('/api/dtree/train', methods=['POST', 'OPTIONS'])
+def dtree_train():
+    if request.method == 'OPTIONS':
+        # CORS preflight response
+        response = jsonify({})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
+        
+    data = request.json
+    print("Received data:", data)  # Add this debug print
+    
+    try:
+        # Extract training data
+        training_data = data.get('trained_points', [])
+        
+        if len(training_data) < 2:
+            return jsonify({"error": "Need at least 2 training points"}), 400
+            
+        # Get parameters with default values
+        max_depth = int(data.get('parameters', {}).get('max_depth', 3))
+        min_samples_split = int(data.get('parameters', {}).get('min_samples_split', 2))
+        criterion = data.get('parameters', {}).get('criterion', 'gini')
+        
+        # Separate X and y based on training data structure
+        X = []
+        y = []
+        
+        # Print some debug info
+        print(f"Training data type: {data.get('type')}")
+        print(f"First point: {training_data[0] if training_data else 'No data'}")
+        
+        if data.get('type') == 'classification':
+            for point in training_data:
+                try:
+                    x1 = float(point['x1'])
+                    x2 = float(point['x2'])
+                    X.append([x1, x2])
+                    
+                    # For classification, y can be string or number but we'll convert to string for consistency
+                    if 'class' in point:
+                        y.append(str(point['class']))
+                    elif 'y' in point:
+                        y.append(str(point['y']))
+                    else:
+                        return jsonify({"error": f"Point missing class or y value: {point}"}), 400
+                except (ValueError, TypeError) as e:
+                    return jsonify({"error": f"Invalid data value in point {point}: {e}"}), 400
+                except KeyError as e:
+                    return jsonify({"error": f"Missing key in point {point}: {e}"}), 400
+            
+            # Debug print
+            print(f"Processed X: {X}")
+            print(f"Processed y: {y}")
+            
+            # Critical: ensure unique classes by manually converting to numeric labels
+            unique_classes = list(set(y))
+            class_to_num = {cls: i for i, cls in enumerate(unique_classes)}
+            y_numeric = [class_to_num[cls] for cls in y]
+            
+            print(f"Numeric y: {y_numeric}")
+            
+            # Convert X to numpy array with explicit data type
+            X_arr = np.array(X, dtype=np.float64)
+            y_arr = np.array(y_numeric, dtype=np.int32)
+            
+            # Check for NaN or infinity
+            if np.any(np.isnan(X_arr)) or np.any(np.isinf(X_arr)):
+                return jsonify({"error": "Data contains NaN or infinite values"}), 400
+                
+            print(f"X array shape: {X_arr.shape}, y array shape: {y_arr.shape}")
+            print(f"X array dtype: {X_arr.dtype}, y array dtype: {y_arr.dtype}")
+            
+            # Run decision tree classification with our numeric y
+            result = run_decision_tree_classification({'X': X_arr, 'y': y_arr}, max_depth, min_samples_split, criterion)
+            
+            # Add class mapping to result for frontend interpretation
+            result['class_mapping'] = {str(v): str(k) for k, v in class_to_num.items()}
+            
+        else:  # Regression case
+            for point in training_data:
+                try:
+                    x1 = float(point['x1'])
+                    x2 = float(point['x2'])
+                    X.append([x1, x2])
+                    
+                    # For regression, y must be numeric
+                    if 'value' in point:
+                        y.append(float(point['value']))
+                    elif 'y' in point:
+                        y.append(float(point['y']))
+                    else:
+                        return jsonify({"error": f"Point missing value or y: {point}"}), 400
+                except (ValueError, TypeError) as e:
+                    return jsonify({"error": f"Invalid numeric value in point {point}: {e}"}), 400
+                except KeyError as e:
+                    return jsonify({"error": f"Missing key in point {point}: {e}"}), 400
+            
+            # Convert X and y to numpy arrays with explicit data type
+            X_arr = np.array(X, dtype=np.float64)
+            y_arr = np.array(y, dtype=np.float64)
+            
+            # Check for NaN or infinity
+            if np.any(np.isnan(X_arr)) or np.any(np.isinf(X_arr)) or np.any(np.isnan(y_arr)) or np.any(np.isinf(y_arr)):
+                return jsonify({"error": "Data contains NaN or infinite values"}), 400
+                
+            print(f"X array shape: {X_arr.shape}, y array shape: {y_arr.shape}")
+            print(f"X array dtype: {X_arr.dtype}, y array dtype: {y_arr.dtype}")
+            
+            # Run decision tree regression
+            result = run_decision_tree_regression({'X': X_arr, 'y': y_arr}, max_depth, min_samples_split)
+
+        if 'tree_visualization' in result and result['tree_visualization']:
+            # Save the base64 image to a temporary file or database
+            # For now, just truncate it if it's too large
+            if len(result['tree_visualization']) > 500000:  # If over ~500kb
+                # Either compress further or just notify it's too large
+                result['tree_visualization'] = result['tree_visualization'][:500000]
+                print("Warning: Tree visualization was truncated due to size")
+
+        if 'error' in result:
+            return jsonify(result), 400
+        
+        # Convert any NumPy types to Python native types to make it JSON serializable
+        def convert_to_python_types(obj):
+            if isinstance(obj, dict):
+                return {k: convert_to_python_types(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_to_python_types(item) for item in obj]
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.bool_):
+                return bool(obj)
+            else:
+                return obj
+        
+        # Convert all values in the result to Python native types
+        result = convert_to_python_types(result)
+            
+        return jsonify(result)
+        
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Error in dtree_train: {str(e)}")
+        print(f"Traceback: {error_traceback}")
+        return jsonify({"error": str(e), "traceback": error_traceback}), 400
+
+@app.route('/api/dtree/visualize', methods=['POST', 'OPTIONS'])
+def dtree_visualize():
+    if request.method == 'OPTIONS':
+        # Handle CORS preflight request
+        response = jsonify({})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
+        
+    data = request.json
+    try:
+        # Extract training data
+        training_data = data.get('trained_points', [])
+        
+        if len(training_data) < 2:
+            return jsonify({"error": "Need at least 2 training points"}), 400
+            
+        # Get parameters with default values
+        max_depth = int(data.get('parameters', {}).get('max_depth', 3))
+        min_samples_split = int(data.get('parameters', {}).get('min_samples_split', 2))
+        criterion = data.get('parameters', {}).get('criterion', 'gini')
+        
+        # Format the data for the model
+        X = []
+        y = []
+        
+        if data.get('type') == 'classification':
+            for point in training_data:
+                try:
+                    x1 = float(point['x1'])
+                    x2 = float(point['x2'])
+                    X.append([x1, x2])
+                    
+                    if 'class' in point:
+                        y.append(str(point['class']))
+                    elif 'y' in point:
+                        y.append(str(point['y']))
+                    else:
+                        return jsonify({"error": f"Point missing class or y value: {point}"}), 400
+                except (ValueError, TypeError) as e:
+                    return jsonify({"error": f"Invalid data value in point {point}: {e}"}), 400
+                    
+            # Convert to numpy arrays
+            X_arr = np.array(X)
+            y_arr = np.array(y)
+            
+            # Train the model
+            clf = DecisionTreeClassifier(
+                max_depth=max_depth,
+                min_samples_split=min_samples_split,
+                criterion=criterion,
+                random_state=42
+            )
+            clf.fit(X_arr, y_arr)
+            
+            # Generate tree visualization with only leaf nodes colored
+            tree_img = generate_tree_visualization(clf, feature_names=['x1', 'x2'], class_names=np.unique(y_arr))
+            
+            # Generate optimized smaller decision boundary visualization
+            boundary_img = generate_optimized_decision_boundary(clf, X_arr, y_arr)
+            
+            # Convert NumPy types to Python types (to ensure JSON serialization works)
+            def convert_to_python_types(obj):
+                if isinstance(obj, dict):
+                    return {k: convert_to_python_types(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_to_python_types(item) for item in obj]
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, np.bool_):
+                    return bool(obj)
+                else:
+                    return obj
+            
+            result = {
+                'tree_visualization': tree_img,
+                'decision_boundary': boundary_img
+            }
+            
+            return jsonify(convert_to_python_types(result))
+            
+        else:  # Regression case
+            for point in training_data:
+                try:
+                    x1 = float(point['x1'])
+                    x2 = float(point['x2'])
+                    X.append([x1, x2])
+                    
+                    if 'value' in point:
+                        y.append(float(point['value']))
+                    elif 'y' in point:
+                        y.append(float(point['y']))
+                    else:
+                        return jsonify({"error": f"Point missing value or y: {point}"}), 400
+                except (ValueError, TypeError) as e:
+                    return jsonify({"error": f"Invalid numeric value in point {point}: {e}"}), 400
+                    
+            # Convert to numpy arrays
+            X_arr = np.array(X)
+            y_arr = np.array(y)
+            
+            # Train the model
+            regressor = DecisionTreeRegressor(
+                max_depth=max_depth,
+                min_samples_split=min_samples_split,
+                random_state=42
+            )
+            regressor.fit(X_arr, y_arr)
+            
+            # Generate tree visualization 
+            tree_img = generate_tree_visualization(regressor, feature_names=['x1', 'x2'], regression=True)
+            
+            # Generate regression surface visualization
+            regression_img = generate_regression_surface(regressor, X_arr, y_arr)
+            
+            # Convert NumPy types to Python types
+            def convert_to_python_types(obj):
+                if isinstance(obj, dict):
+                    return {k: convert_to_python_types(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_to_python_types(item) for item in obj]
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, np.bool_):
+                    return bool(obj)
+                else:
+                    return obj
+            
+            result = {
+                'tree_visualization': tree_img,
+                'decision_boundary': regression_img  # Use consistent key for frontend
+            }
+            
+            return jsonify(convert_to_python_types(result))
+            
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Error in dtree_visualize: {str(e)}")
+        print(f"Traceback: {error_traceback}")
+        return jsonify({"error": str(e), "traceback": error_traceback}), 400
 
 if __name__ == '__main__':
     print(" * ML Visualizer Backend Starting...")
