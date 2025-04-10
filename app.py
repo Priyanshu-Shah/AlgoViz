@@ -45,7 +45,8 @@ def root():
             "/api/kmeans",              
             "/api/kmeans/sample",
             "/api/pca",                  
-            "/api/pca/sample-data"         
+            "/api/pca/sample-data",
+            "/api/dbscan"  
         ]
     })
 
@@ -1209,6 +1210,128 @@ def svm_sample_data_custom():
     except Exception as e:
         import traceback
         return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+import json
+from flask import jsonify, request
+@app.route('/api/dbscan/run_complete', methods=['POST'])
+def dbscan_run_complete():
+    try:
+        data = request.get_json()
+        points = data.get('points', [])
+        eps = float(data.get('eps', 0.5))
+        min_samples = int(data.get('min_samples', 5))
+        
+        # Get visualization options - these will be used in the frontend, but we still pass them
+        # to keep the API consistent
+        show_core_points = data.get('show_core_points', True)
+        show_border_points = data.get('show_border_points', True)
+        show_noise_points = data.get('show_noise_points', True)
+        show_epsilon_radius = data.get('show_epsilon_radius', True)
+        
+        if not points:
+            return jsonify({"status": "error", "message": "No data points provided"}), 400
+        
+        from models.dbscan import run_dbscan
+        result = run_dbscan(
+            points=points, 
+            eps=eps, 
+            min_samples=min_samples,
+            show_core_points=show_core_points,
+            show_border_points=show_border_points,
+            show_noise_points=show_noise_points,
+            show_epsilon_radius=show_epsilon_radius
+        )
+        
+        # Convert NumPy types to Python native types for JSON serialization
+        def convert_to_python_types(obj):
+            import numpy as np
+            if isinstance(obj, dict):
+                return {k: convert_to_python_types(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_to_python_types(item) for item in obj]
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, (np.int32, np.int64)):
+                return int(obj)
+            elif isinstance(obj, (np.float32, np.float64)):
+                return float(obj)
+            elif isinstance(obj, np.bool_):
+                return bool(obj)
+            else:
+                return obj
+        
+        # Convert the result before returning
+        result = convert_to_python_types(result)
+        return jsonify(result)
+    
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Error in dbscan_run_complete: {str(e)}")
+        print(f"Traceback: {error_traceback}")
+        return jsonify({"status": "error", "message": str(e), "traceback": error_traceback}), 400
+
+@app.route('/api/dbscan/sample_data', methods=['POST'])
+def dbscan_sample_data():
+    try:
+        # Get parameters from request
+        data = request.get_json()
+        dataset_type = data.get('dataset_type', 'blobs')
+        n_samples = int(data.get('n_samples', 100))
+        n_clusters = int(data.get('n_clusters', 3))
+        noise_level = float(data.get('noise_level', 0.05))
+        
+        # Import the sample data generator
+        from datasets.sample_data import generate_dbscan_data
+        
+        # Generate sample data
+        result = generate_dbscan_data(
+            dataset_type=dataset_type,
+            n_samples=n_samples,
+            n_clusters=n_clusters,
+            noise_level=noise_level
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+# For backwards compatibility, keep the GET endpoint too
+@app.route('/api/dbscan/sample-data', methods=['GET'])
+def get_dbscan_sample_data():
+    try:
+        # Get query parameters with defaults
+        dataset_type = request.args.get('dataset_type', default='blobs', type=str)
+        n_samples = request.args.get('n_samples', default=100, type=int)
+        n_clusters = request.args.get('n_clusters', default=3, type=int)
+        noise_level = request.args.get('noise_level', default=0.05, type=float)
+        
+        # Import the sample data generator
+        from datasets.sample_data import generate_dbscan_data
+        
+        # Generate sample data
+        result = generate_dbscan_data(
+            dataset_type=dataset_type,
+            n_samples=n_samples,
+            n_clusters=n_clusters,
+            noise_level=noise_level
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'status': 'error',
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500

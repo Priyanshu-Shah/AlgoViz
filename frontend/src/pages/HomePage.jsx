@@ -84,9 +84,9 @@ function HomePage() {
     {
       name: "DBSCAN",
       description: "Density-based spatial clustering of applications with noise",
-      path: "/dbscan",
+      path: "/DBScan",
       image: "https://cdn-icons-png.flaticon.com/512/9464/9464616.png",
-      implemented: false
+      implemented: true
     },
     {
       name: "Principal Component Analysis",

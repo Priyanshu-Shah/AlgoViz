@@ -159,3 +159,28 @@ export const getPCASampleData = async () => {
     throw error.response?.data || error;
   }
 };
+
+export const runDBSCAN = async (data) => {
+  try {
+    const response = await axios.post(`${API_URL}/DBScan`, data);
+    return response.data;
+  } catch (error) {
+    console.error('Error running DBSCAN:', error);
+    return {
+      status: "error",
+      message: error.response?.data?.error || error.message
+    };
+  }
+};
+
+// In api.jsx, make sure this function uses the correct HTTP method (POST)
+export const getDBSCANSampleData = async (options) => {
+  try {
+    // Using POST as defined in your server
+    const response = await axios.post(`${API_URL}/DBScan/sample-data`, options);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting DBSCAN sample data:', error);
+    throw error.response?.data || error;
+  }
+};

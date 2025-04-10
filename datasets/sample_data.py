@@ -59,3 +59,65 @@ def generate_pca_data(n_samples=50, seed=42):
     return {
         'X': data.tolist()
     }
+
+def generate_dbscan_data(dataset_type='blobs', n_samples=100, n_clusters=3, noise_level=0.05):
+    """
+    Generate sample data for DBSCAN visualization
+    
+    Parameters:
+    dataset_type (str): Type of dataset to generate ('blobs', 'moons', 'circles', 'anisotropic', 'noisy_circles')
+    n_samples (int): Number of samples
+    n_clusters (int): Number of clusters (only for 'blobs')
+    noise_level (float): Controls the amount of noise in the dataset
+    
+    Returns:
+    dict: Dictionary containing points as list of dicts with x,y coordinates
+    """
+    import numpy as np
+    from sklearn.datasets import make_blobs, make_moons, make_circles
+    
+    np.random.seed(42)
+    
+    if dataset_type == 'moons':
+        X, _ = make_moons(n_samples=n_samples, noise=noise_level, random_state=42)
+        # Scale to better fill the canvas
+        X = X * 5 - 2.5
+        
+    elif dataset_type == 'circles':
+        X, _ = make_circles(n_samples=n_samples, noise=noise_level, factor=0.5, random_state=42)
+        # Scale to better fill the canvas
+        X = X * 5
+        
+    elif dataset_type == 'anisotropic':
+        # Create anisotropically distributed data
+        X, _ = make_blobs(n_samples=n_samples, centers=1, random_state=42)
+        transformation = [[0.6, -0.6], [-0.4, 0.8]]
+        X = np.dot(X, transformation) * 4
+        
+    elif dataset_type == 'noisy_circles':
+        X, _ = make_circles(n_samples=n_samples, factor=0.5, noise=noise_level*2, random_state=42)
+        # Add some outliers
+        n_outliers = int(n_samples * 0.1)
+        outliers = np.random.uniform(low=-10, high=10, size=(n_outliers, 2))
+        X = np.vstack([X * 5, outliers])
+        
+    else:  # 'blobs' (default)
+        # Create centers that are well separated
+        centers = []
+        for i in range(n_clusters):
+            angle = i * (2 * np.pi / n_clusters)
+            center_x = 4 * np.cos(angle)
+            center_y = 4 * np.sin(angle)
+            centers.append([center_x, center_y])
+                
+        X, _ = make_blobs(
+            n_samples=n_samples, 
+            centers=centers,
+            cluster_std=noise_level*5 + 0.3,  # Scale noise level appropriately
+            random_state=42
+        )
+    
+    # Convert to list of points {x, y}
+    points = [{"x": float(x), "y": float(y)} for x, y in X]
+    
+    return {"points": points}
