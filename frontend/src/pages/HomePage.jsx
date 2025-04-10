@@ -62,7 +62,7 @@ function HomePage() {
       description: "Deep learning model inspired by the human brain",
       path: "/ann",
       image: "https://cdn-icons-png.flaticon.com/512/2103/2103633.png",
-      implemented: false
+      implemented: true
     }
   ];
 

@@ -117,6 +117,11 @@ export const getSVMSampleData = async (n_samples = 30, noise = 0.1) => {
 export const runSVM = async (data) => {
   const response = await axios.post(`${API_URL}/svm`, data);
   return response.data;
+};
+
+export const runANN = async (data) => {
+  const response = await axios.post(`${API_URL}/ann`, data);
+  return response.data;
 }
 
 export const runKnnClassification = async (data) => {

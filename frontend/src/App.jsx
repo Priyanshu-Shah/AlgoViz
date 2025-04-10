@@ -10,6 +10,7 @@ import About from './pages/About';
 import Docs from './pages/Docs';
 import PCA from './pages/PCA';
 import SVM from './pages/SVM';
+import ANN from './pages/ANN';
 import DBScan from './pages/DBScan';
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
           <Route path="/docs" element={<Docs />} />
           <Route path="/pca" element={<PCA />} />
           <Route path='/svm' element={<SVM />} />
+          <Route path='/ann' element={<ANN />} />
           <Route path='/DBScan' element={<DBScan />} />
         </Routes>
       </MainLayout>

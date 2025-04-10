@@ -4,7 +4,6 @@ matplotlib.use('Agg')  # Use Agg backend (non-interactive)
 import numpy as np
 from flask import Flask, jsonify, request # type: ignore
 from flask_cors import CORS # type: ignore
-import json
 import os
 import sys
 
@@ -22,6 +21,7 @@ from models.DTrees import (run_decision_tree_classification, run_decision_tree_r
                           predict_data_points, generate_sample_classification_data, generate_optimized_decision_boundary,
                           generate_sample_regression_data, generate_tree_with_highlighted_path, generate_regression_surface)
 from models.SVM import run_svm
+from models.ANN import run_ann, predict_points, generate_sample_data
 
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from datasets.sample_data import generate_linear_data
@@ -1213,6 +1213,109 @@ def svm_sample_data_custom():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+@app.route('/api/ann/train', methods=['POST'])
+def ann():
+    try:
+        data = request.json
+        print(f"Received API request for ANN")
+        print(f"Request data type: {type(data)}")
+        print(f"Request data content: {data}")
+        
+        # Validate input data
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "Invalid request format. Expected JSON object"}), 400
+        
+        if 'X' not in data:
+            return jsonify({"error": "Missing required data field: X must be provided"}), 400
+        
+        if not isinstance(data['X'], list):
+            return jsonify({"error": "X must be an array/list"}), 400
+        
+        if len(data['X']) < 2:
+            return jsonify({"error": "At least 2 data points are required for ANN"}), 400
+            
+        if 'y' not in data:
+            return jsonify({"error": "Missing required data field: y (labels) must be provided"}), 400
+            
+        if len(data['X']) != len(data['y']):
+            return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
+        
+        # Run ANN algorithm
+        result = run_ann(data)
+        
+        return jsonify(result)
+    
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Error in ANN endpoint: {str(e)}")
+        print(error_traceback)
+        return jsonify({"error": str(e), "traceback": error_traceback}), 500
+
+@app.route('/api/ann/predict', methods=['POST'])
+def ann_predict():
+    try:
+        data = request.json
+        print(f"Received API request for ANN prediction")
+        
+        # Validate input data
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "Invalid request format. Expected JSON object"}), 400
+        
+        if 'model' not in data:
+            return jsonify({"error": "Missing required data field: model must be provided"}), 400
+            
+        if 'points' not in data:
+            return jsonify({"error": "Missing required data field: points must be provided"}), 400
+    
+        # Extract the model from the data
+        model = data['model']
+        points = data['points']
+        
+        # Optional scaler if provided
+        scaler = data.get('scaler', None)
+        
+        # Make predictions
+        predictions = predict_points(model, points, scaler)
+        
+        return jsonify({"predictions": predictions})
+    
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Error in ANN prediction endpoint: {str(e)}")
+        print(error_traceback)
+        return jsonify({"error": str(e), "traceback": error_traceback}), 500
+
+@app.route('/api/ann/sample_data', methods=['POST'])
+def ann_sample_data():
+    try:
+        data = request.json
+        print(f"Received API request for ANN sample data")
+        
+        dataset_type = data.get('dataset_type', 'blobs')
+        n_samples = data.get('count', 100)
+        n_clusters = data.get('n_clusters', 2)
+        variance = data.get('variance', 0.5)
+        
+        # Generate sample data
+        sample_data = generate_sample_data(
+            dataset_type=dataset_type,
+            n_samples=n_samples,
+            n_clusters=n_clusters,
+            variance=variance
+        )
+        
+        return jsonify(sample_data)
+    
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Error in ANN sample data endpoint: {str(e)}")
+        print(error_traceback)
+        return jsonify({"error": str(e), "traceback": error_traceback}), 500
+    
 
 import json
 from flask import jsonify, request

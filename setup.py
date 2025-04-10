@@ -3,31 +3,19 @@ import subprocess
 import sys
 
 def setup_backend():
-    """Set up the backend environment and install dependencies"""
     print("Setting up Python backend environment...")
-    
     try:
-        # Check if venv exists, create if not
-        if not os.path.exists('venv'):
-            if sys.platform == 'win32':
-                subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
-            else:
-                subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
-        
-        # Activate venv and install requirements
-        if sys.platform == 'win32':
-            pip_path = os.path.join('venv', 'Scripts', 'pip')
-        else:
-            pip_path = os.path.join('venv', 'bin', 'pip')
-        
-        subprocess.check_call([pip_path, 'install', '--upgrade', 'pip'])
-        subprocess.check_call([pip_path, 'install', '-r', 'requirements.txt'])
-        
-        print("Backend setup complete!")
-        return True
+        # Upgrade pip, setuptools, and wheel
+        subprocess.check_call(['venv\\Scripts\\python', '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel'])
     except subprocess.CalledProcessError as e:
-        print(f"Error setting up backend: {e}")
+        print(f"Warning: Could not upgrade pip, setuptools, or wheel. Proceeding with the existing versions. Error: {e}")
+    try:
+        # Install dependencies from requirements.txt
+        subprocess.check_call(['venv\\Scripts\\pip', 'install', '-r', 'requirements.txt'])
+    except subprocess.CalledProcessError as e:
+        print(f"Error installing backend dependencies: {e}")
         return False
+    return True
 
 def setup_frontend():
     """Set up the frontend and install dependencies"""
@@ -50,9 +38,9 @@ def main():
     print("=== ML Visualizer Setup ===")
     
     backend_success = setup_backend()
-    frontend_success = setup_frontend()
+    #frontend_success = setup_frontend()
     
-    if backend_success and frontend_success:
+    if backend_success:
         print("\n=== Setup completed successfully! ===")
         print("\nTo run the application:")
         print("1. Start the backend server: python app.py")
