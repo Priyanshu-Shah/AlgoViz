@@ -156,12 +156,13 @@ def run_pca(data):
         print(traceback.format_exc())
         return {'error': str(e)}
 
-def generate_pca_data(n_samples=50, seed=42):
+def generate_pca_data(n_samples=50, noise=0.1, seed=42):
     """
     Generate sample data for PCA visualization
     
     Parameters:
     n_samples (int): Number of samples to generate
+    noise (float): Noise level to adjust the covariance matrix
     seed (int): Random seed for reproducibility
     
     Returns:
@@ -171,11 +172,12 @@ def generate_pca_data(n_samples=50, seed=42):
     np.random.seed(seed)
     
     # Generate a correlated dataset
-    # We'll create data with correlation between x and y
     mean = [0, 0]
     
-    # Covariance matrix - create a correlation of 0.8 between variables
-    cov = [[1.0, 0.8], [0.8, 1.0]]
+    # Covariance matrix - adjust correlation based on noise
+    base_correlation = 0.8
+    adjusted_correlation = max(0, min(1, base_correlation - noise))
+    cov = [[1.0, adjusted_correlation], [adjusted_correlation, 1.0]]
     
     # Generate random data from multivariate normal distribution
     data = np.random.multivariate_normal(mean, cov, n_samples)

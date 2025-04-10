@@ -154,10 +154,11 @@ export const runPCA = async (data) => {
   }
 };
 
-export const getPCASampleData = async () => {
+export const getPCASampleData = async (n_samples = 30, noise = 5.0) => {
   try {
-    // Fix the URL: remove the duplicate /api/ path
-    const response = await axios.get(`${API_URL}/pca/sample-data`);
+    const response = await axios.get(
+      `${API_URL}/pca/sample-data?n_samples=${n_samples}&noise=${noise}`
+    );
     return response.data;
   } catch (error) {
     console.error('Error getting PCA sample data:', error);

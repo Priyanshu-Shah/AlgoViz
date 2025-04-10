@@ -8,11 +8,18 @@ const API_URL = 'http://localhost:5000/api';
 function PCA() {
   const navigate = useNavigate();
   const [dataPairs, setDataPairs] = useState([{ x: '', y: '' }]);
+  const safeDataPairs = dataPairs || [];
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [backendStatus, setBackendStatus] = useState("checking");
   const [sampleLoading, setSampleLoading] = useState(false);
+  const [components, setComponents] = useState(2);
+  const [explainedVariance, setExplainedVariance] = useState(null);
+  const [showSampleDataModal, setShowSampleDataModal] = useState(false);
+  const [sampleCount, setSampleCount] = useState(30);
+  const [sampleNoise, setSampleNoise] = useState(5.0);
+  const [projectedPoints, setProjectedPoints] = useState([]); // New state for projected points
   
   // Canvas ref and state for interactive plotting
   const canvasRef = useRef(null);
@@ -43,7 +50,7 @@ function PCA() {
   
   // Convert data pairs to points - extracted for reuse
   const getValidPoints = () => {
-    return dataPairs
+    return safeDataPairs
       .filter(pair => pair.x !== '' && pair.y !== '' && !isNaN(parseFloat(pair.x)) && !isNaN(parseFloat(pair.y)))
       .map(pair => ({
         x: parseFloat(pair.x),
@@ -70,16 +77,16 @@ function PCA() {
     // Draw points
     drawPoints(ctx, canvas, points);
 
+    // Draw projected points
+    if (projectedPoints.length > 0) {
+      drawPoints(ctx, canvas, projectedPoints, 'rgba(239, 51, 18, 0.7)'); // Red color for projected points
+    }
+
     // Draw principal components if results exist
     if (results && results.components && results.original_mean) {
         drawPrincipalComponents(ctx, canvas, results.components, results.original_mean, points);
-
-        // Draw reconstructed points if available
-        if (results.reconstructed) {
-            drawReconstructedPoints(ctx, canvas, results.reconstructed);
-        }
     }
-}, [dataPairs, results]);
+  }, [dataPairs, projectedPoints, results, isProjectionActive]);
 
   // Helper function to draw grid and axes
   const drawGrid = (ctx, canvas) => {
@@ -124,7 +131,7 @@ function PCA() {
   };
 
   // Helper function to draw points
-  const drawPoints = (ctx, canvas, points) => {
+  const drawPoints = (ctx, canvas, points, color = 'rgba(59, 130, 246, 0.7)') => {
     if (!points || points.length === 0) return;
     
     points.forEach(point => {
@@ -134,50 +141,11 @@ function PCA() {
       
       ctx.beginPath();
       ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.7)'; // Blue color for original points
+      ctx.fillStyle = color; // Color for points
       ctx.fill();
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 1;
       ctx.stroke();
-    });
-  };
-
-  // Helper function to draw reconstructed points
-  const drawReconstructedPoints = (ctx, canvas, reconstructedPoints) => {
-    if (!reconstructedPoints || reconstructedPoints.length === 0) return;
-    
-    reconstructedPoints.forEach(point => {
-      // Convert data coordinates to screen coordinates
-      const x = ((point[0] - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
-      const y = canvas.height - ((point[1] - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-      
-      // ctx.beginPath();
-      // ctx.arc(x, y, 6, 0, Math.PI * 2);
-      // ctx.fillStyle = 'rgb(255, 255, 255)'; // Red color for reconstructed points
-      // ctx.fill();
-      // ctx.strokeStyle = '#000';
-      // ctx.lineWidth = 0;
-      // ctx.stroke();
-      
-      // Draw dotted line connecting to original points (if results.original exists)
-      if (results && results.original) {
-        const originalPoint = results.original.find(
-          (op, idx) => reconstructedPoints.indexOf(point) === idx
-        );
-        
-        if (originalPoint) {
-          const x2 = ((originalPoint[0] - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
-          const y2 = canvas.height - ((originalPoint[1] - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-          
-          ctx.beginPath();
-          ctx.setLineDash([2, 2]);
-          ctx.moveTo(x, y);
-          ctx.lineTo(x2, y2);
-          ctx.strokeStyle = 'rgba(253, 253, 253, 0.7)'; // Gray color for connecting lines
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
     });
   };
 
@@ -314,7 +282,7 @@ function PCA() {
     console.log("Canvas clicked at data coordinates:", dataPoint);
     
     // Add point to data pairs - use existing empty pair if available
-    const emptyPairIndex = dataPairs.findIndex(pair => pair.x === '' && pair.y === '');
+    const emptyPairIndex = safeDataPairs.findIndex(pair => pair.x === '' && pair.y === '');
     const newPoint = {
       x: dataPoint.x.toFixed(2),
       y: dataPoint.y.toFixed(2)
@@ -322,21 +290,21 @@ function PCA() {
     
     if (emptyPairIndex >= 0) {
       // Update existing empty pair
-      const newPairs = [...dataPairs];
+      const newPairs = [...safeDataPairs];
       newPairs[emptyPairIndex] = newPoint;
       setDataPairs(newPairs);
     } else {
       // Add new pair
-      setDataPairs([...dataPairs, newPoint]);
+      setDataPairs([...safeDataPairs, newPoint]);
     }
   };
 
   const handleAddPair = () => {
-    setDataPairs([...dataPairs, { x: '', y: '' }]);
+    setDataPairs([...safeDataPairs, { x: '', y: '' }]);
   };
 
   const handleRemovePair = (index) => {
-    const newPairs = [...dataPairs];
+    const newPairs = [...safeDataPairs];
     newPairs.splice(index, 1);
     
     // Ensure there's always at least one row
@@ -352,38 +320,36 @@ function PCA() {
       console.error("No results available for projecting points.");
       return;
     }
-  
+
     const pc1 = results.components[0]; // First principal component
     const mean = results.original_mean; // Mean vector
-  
+
     // Calculate projections for each point
-    const projectedPairs = dataPairs
+    const projectedPairs = safeDataPairs
       .filter(pair => pair.x !== '' && pair.y !== '' && !isNaN(pair.x) && !isNaN(pair.y)) // Filter valid points
       .map(pair => {
         const x = parseFloat(pair.x);
         const y = parseFloat(pair.y);
-  
+
         // Calculate projection onto PCA1
         const dx = x - mean[0];
         const dy = y - mean[1];
         const projectionLength = dx * pc1[0] + dy * pc1[1];
         const projectedX = mean[0] + projectionLength * pc1[0];
         const projectedY = mean[1] + projectionLength * pc1[1];
-  
+
         return {
           x: projectedX.toFixed(2), // Round to 2 decimal places
           y: projectedY.toFixed(2)
         };
       });
-  
-    // Append projected points to the existing dataPairs
-    setDataPairs([...dataPairs, ...projectedPairs]);
-  
-    // Activate projection mode
+
+    setProjectedPoints(projectedPairs); // Store projected points separately
     setIsProjectionActive(true);
   };
+
   const handleInputChange = (index, field, value) => {
-    const newPairs = [...dataPairs];
+    const newPairs = [...safeDataPairs];
     
     // Strip any non-numeric characters except decimal point and minus sign
     if (field === 'x' || field === 'y') {
@@ -410,16 +376,16 @@ function PCA() {
   const loadSampleData = async () => {
     setSampleLoading(true);
     setError(null);
-    
+
     try {
       const sampleData = await getPCASampleData();
-      
+
       // Convert sample data into pairs
       const pairs = sampleData.X.map((point) => ({
-        x: point[0].toString(),
-        y: point[1].toString()
+        x: point[0]?.toString() || '',
+        y: point[1]?.toString() || ''
       }));
-      
+
       setDataPairs(pairs);
     } catch (err) {
       setError('Failed to load sample data. Please try again.');
@@ -429,37 +395,224 @@ function PCA() {
     }
   };
 
+  const generateSampleDataWithOptions = async () => {
+    setSampleLoading(true);
+    setShowSampleDataModal(false);
+    setError(null);
+
+    try {
+      // Pass slider values dynamically to the API call
+      const sampleData = await getPCASampleData(sampleCount, sampleNoise);
+
+      // Convert sample data into pairs
+      const pairs = sampleData.X.map((point) => ({
+        x: point[0]?.toString() || '',
+        y: point[1]?.toString() || ''
+      }));
+
+      setDataPairs(pairs);
+    } catch (err) {
+      setError('Failed to load sample data. Please try again.');
+      console.error(err);
+    } finally {
+      setSampleLoading(false);
+    }
+  };
+
+  const SampleDataModal = () => (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        padding: '1.5rem',
+        borderRadius: '8px',
+        width: '90%',
+        maxWidth: '500px',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '1rem'
+        }}>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: '600' }}>
+            Generate Sample Data
+          </h2>
+          <button 
+            onClick={() => setShowSampleDataModal(false)}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '1.5rem',
+              cursor: 'pointer',
+              color: '#6b7280'
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Sample count slider */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label htmlFor="sample-count" style={{ 
+            display: 'block', 
+            marginBottom: '0.5rem', 
+            fontWeight: '500', 
+            color: '#4b5563' 
+          }}>
+            Number of Samples: {sampleCount}
+          </label>
+          <input
+            id="sample-count"
+            type="range"
+            min="10"
+            max="100"
+            step="5"
+            value={sampleCount}
+            onChange={(e) => setSampleCount(Number(e.target.value))}
+            style={{ width: '100%' }}
+          />
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            fontSize: '0.8rem', 
+            color: '#6b7280',
+            marginTop: '0.25rem'
+          }}>
+            <span>10 (Fewer points)</span>
+            <span>100 (More points)</span>
+          </div>
+        </div>
+
+        {/* Noise level slider */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label htmlFor="noise" style={{ 
+            display: 'block', 
+            marginBottom: '0.5rem', 
+            fontWeight: '500', 
+            color: '#4b5563' 
+          }}>
+            Noise Level: {sampleNoise.toFixed(1)}
+          </label>
+          <input
+            id="noise"
+            type="range"
+            min="1.0"
+            max="10.0"
+            step="0.5"
+            value={sampleNoise}
+            onChange={(e) => setSampleNoise(Number(e.target.value))}
+            style={{ width: '100%' }}
+          />
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            fontSize: '0.8rem', 
+            color: '#6b7280',
+            marginTop: '0.25rem'
+          }}>
+            <span>1.0 (Clean data)</span>
+            <span>10.0 (Noisy data)</span>
+          </div>
+        </div>
+
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'flex-end',
+          gap: '0.75rem',
+          marginTop: '1.5rem'
+        }}>
+          <button
+            onClick={() => setShowSampleDataModal(false)}
+            style={{
+              padding: '0.6rem 1.2rem',
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+              border: 'none',
+              borderRadius: '0.5rem',
+              cursor: 'pointer',
+              fontWeight: '500'
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={generateSampleDataWithOptions}
+            style={{
+              padding: '0.6rem 1.2rem',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              cursor: 'pointer',
+              fontWeight: '500'
+            }}
+          >
+            Generate Data
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   const resetData = () => {
     setDataPairs([{ x: '', y: '' }]);
     setResults(null);
     setError(null);
   };
 
-  // Update the handleRunModel function for better error logging
   const handleRunModel = async () => {
+    console.log('Running PCA...');
     setIsProjectionActive(false); // Reset projection state
+
+    // Clear the canvas explicitly
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      console.log('Canvas cleared');
+    }
+
+    // Reset dataPairs and projected points
+    setDataPairs((prevPairs) => prevPairs.filter(pair => pair.x !== '' && pair.y !== ''));
+    setProjectedPoints([]); // Clear projected points
+
     const validPoints = getValidPoints();
-  
+    console.log('Valid points:', validPoints);
+
     if (validPoints.length < 2) {
       setError('Please add at least 2 data points for meaningful PCA');
       return;
     }
-  
+
     setError(null);
     setLoading(true);
     setResults(null);
-  
+
     try {
       const apiData = {
         X: validPoints.map(point => [point.x, point.y])
       };
-  
+
+      console.log('Sending data to PCA API:', apiData);
       const response = await runPCA(apiData);
-  
+
       if (response.error) {
         throw new Error(response.error);
       }
-  
+
+      console.log('PCA API response:', response);
       setResults(response);
     } catch (err) {
       console.error('PCA Error details:', err);
@@ -517,10 +670,10 @@ function PCA() {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button 
                 className="sample-data-button" 
-                onClick={loadSampleData}
+                onClick={() => setShowSampleDataModal(true)}
                 disabled={sampleLoading}
               >
-                {sampleLoading ? 'Loading...' : 'Load Sample Data'}
+                {sampleLoading ? 'Loading...' : 'Generate Sample Data'}
               </button>
               <button 
                 className="sample-data-button" 
@@ -593,7 +746,7 @@ function PCA() {
               <div style={{ width: '30px' }}></div>
             </div>
             
-            {dataPairs.map((pair, index) => (
+            {safeDataPairs.map((pair, index) => (
               <div key={index} className="data-input-container" style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -863,6 +1016,7 @@ function PCA() {
           )}
         </div>
       </div>
+      {showSampleDataModal && <SampleDataModal />}
     </motion.div>
   );
 }
