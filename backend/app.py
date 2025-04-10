@@ -1,4 +1,3 @@
-# Configure matplotlib first to prevent threading issues
 import matplotlib
 matplotlib.use('Agg')  # Use Agg backend (non-interactive)
 import numpy as np
@@ -477,8 +476,6 @@ def pca_analysis():
         if len(data['X']) < 2:
             return jsonify({"error": "At least 2 data points are required for PCA"}), 400
         
-        # Run PCA algorithm - Make sure this is properly imported
-        from models.PCA import run_pca
         result = run_pca(data)
         
         return jsonify(result)
@@ -492,9 +489,6 @@ def pca_analysis():
 @app.route('/api/pca/sample-data', methods=['GET'])
 def pca_sample_data():
     try:
-        # Use the generate_pca_data function from the PCA module
-        from models.PCA import generate_pca_data
-
         # Get query parameters
         n_samples = request.args.get('n_samples', default=50, type=int)
         noise = request.args.get('noise', default=0.1, type=float)
@@ -696,41 +690,6 @@ def dtree_predict_new():
         print(f"Error in dtree prediction: {str(e)}")
         print(f"Traceback: {error_traceback}")
         return jsonify({"error": str(e), "traceback": error_traceback}), 400
-
-# @app.route('/api/dtree-predict', methods=['POST'])
-# def dtree_predict():
-#     data = request.json
-#     try:
-#         # Extract training data and points to predict
-#         training_data = {'X': data.get('X', []), 'y': data.get('y', [])}
-#         predict_points = data.get('predict_points', [])
-        
-#         # Get parameters with default values
-#         max_depth = data.get('max_depth', 3)
-#         min_samples_split = data.get('min_samples_split', 2)
-#         criterion = data.get('criterion', 'gini')
-        
-#         # Validate inputs
-#         if not training_data['X'] or not training_data['y']:
-#             return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
-        
-#         if not predict_points:
-#             return jsonify({"error": "No prediction points provided"}), 400
-        
-#         if len(training_data['X']) != len(training_data['y']):
-#             return jsonify({"error": f"Length mismatch: X has {len(training_data['X'])} elements, y has {len(training_data['y'])} elements"}), 400
-        
-#         # Make predictions
-#         result = predict_data_points(training_data, predict_points, max_depth, min_samples_split, criterion)
-        
-#         if 'error' in result:
-#             return jsonify(result), 400
-            
-#         return jsonify(result)
-#     except Exception as e:
-#         import traceback
-#         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
-
 
 @app.route('/api/dtree/sample_data', methods=['POST'])
 def dtree_sample_data():
