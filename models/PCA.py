@@ -4,8 +4,55 @@ import pandas as pd
 import seaborn as sns
 import base64
 import io
-from sklearn.decomposition import PCA
+# from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+
+
+class CustomStandardScaler:
+    def __init__(self):
+        self.mean_ = None
+        self.scale_ = None
+        
+    def fit_transform(self, X):
+        self.mean_ = np.mean(X, axis=0)
+        self.scale_ = np.std(X, axis=0)
+        return (X - self.mean_) / self.scale_
+        
+    def inverse_transform(self, X):
+        return X * self.scale_ + self.mean_
+
+class CustomPCA:
+    def __init__(self, n_components=2):
+        self.n_components = n_components
+        self.components_ = None
+        self.explained_variance_ = None
+        self.explained_variance_ratio_ = None
+        self.mean_ = None
+
+    def fit_transform(self, X):
+        # Center the data
+        self.mean_ = np.mean(X, axis=0)
+        X_centered = X - self.mean_
+
+        # Compute covariance matrix
+        cov_matrix = np.cov(X_centered.T)
+
+        # Compute eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+        
+        # Sort eigenvalues and eigenvectors in descending order
+        idx = eigenvalues.argsort()[::-1]
+        eigenvalues = eigenvalues[idx]
+        eigenvectors = eigenvectors[:, idx]
+
+        # Store components and explained variance
+        self.components_ = eigenvectors.T[:self.n_components]
+        self.explained_variance_ = eigenvalues[:self.n_components]
+        self.explained_variance_ratio_ = (eigenvalues[:self.n_components] / 
+                                        np.sum(eigenvalues))
+
+        # Transform the data
+        return np.dot(X_centered, eigenvectors[:, :self.n_components])
 
 def run_pca(data):
     """
@@ -67,11 +114,12 @@ def run_pca(data):
         original_mean = np.mean(X, axis=0)
 
         # Standardize the data
-        scaler = StandardScaler()
+        scaler = CustomStandardScaler()
         X_scaled = scaler.fit_transform(X)
 
         # Create and fit PCA
-        pca = PCA(n_components=2)
+        # pca = PCA(n_components=2)
+        pca = CustomPCA(n_components=2)
         X_pca = pca.fit_transform(X_scaled)
 
         # Get principal components and variance info
@@ -135,3 +183,5 @@ def generate_pca_data(n_samples=50, seed=42):
     return {
         'X': data.tolist()
     }
+
+
