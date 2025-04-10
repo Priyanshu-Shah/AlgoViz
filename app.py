@@ -157,7 +157,7 @@ def svm():
     data = request.json
     try:
         # Log incoming data for debugging
-        print(f"Received API request for linear regression")
+        print(f"Received API request for SVM")
         print(f"Request data type: {type(data)}")
         print(f"Request data content: {data}")
 
@@ -177,10 +177,18 @@ def svm():
         if len(data['X']) != len(data['y']):
             return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
         
-        # Call the SVM model function (assuming it's implemented)
-        result = run_svm(data)
+        # Check if we're predicting new points
+        if 'predict' in data and data['predict']:
+            if 'model' not in data:
+                return jsonify({"error": "Model must be provided for prediction"}), 400
+                
+            # Call the prediction function
+            result = predict_new_points(data['model'], data['predict'])
+        else:
+            # Call the SVM model training function
+            result = run_svm(data)
 
-        if result is None :
+        if result is None:
             return jsonify({"error": "Model returned None"}), 500
         
         # Check for error field    
@@ -1136,6 +1144,74 @@ def dtree_visualize():
         print(f"Error in dtree_visualize: {str(e)}")
         print(f"Traceback: {error_traceback}")
         return jsonify({"error": str(e), "traceback": error_traceback}), 400
+
+
+# Import the SVM module functions
+from models.SVM import run_svm, generate_decision_boundary_only, predict_new_points
+
+@app.route('/api/svm', methods=['POST', 'OPTIONS'])
+def svm_endpoint():
+    if request.method == 'OPTIONS':
+        return handle_preflight_request()
+    
+    try:
+        print("Received API request for SVM")
+        data = request.get_json()
+        
+        print(f"Request data type: {type(data)}")
+        print(f"Request data content: {data}")
+        
+        # Use the imported function from models/SVM.py
+        result = run_svm(data)
+        
+        # Check if there was an error
+        if 'error' in result:
+            return jsonify({
+                'success': False,
+                'error': result['error'],
+                'traceback': result.get('traceback', '')
+            }), 400
+            
+        # Return results
+        return jsonify(result)
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@app.route('/api/svm/sample_data', methods=['POST'])
+def svm_sample_data_custom():
+    try:
+        data = request.json
+        dataset_type = data.get('dataset_type', 'blobs')
+        count = data.get('count', 40)
+        n_clusters = data.get('n_clusters', 2)  # For SVM, default to 2 clusters
+        variance = data.get('variance', 0.5)
+        
+        # Import the sample data generator from SVM module
+        from models.SVM import generate_sample_data
+        
+        # Generate the sample data
+        result = generate_sample_data(
+            dataset_type=dataset_type,
+            n_samples=count,
+            n_clusters=n_clusters,
+            variance=variance
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 if __name__ == '__main__':
     print(" * ML Visualizer Backend Starting...")
