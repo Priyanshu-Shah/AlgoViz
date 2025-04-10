@@ -1317,7 +1317,6 @@ def ann_sample_data():
         return jsonify({"error": str(e), "traceback": error_traceback}), 500
     
 
-import json
 from flask import jsonify, request
 @app.route('/api/dbscan/run_complete', methods=['POST'])
 def dbscan_run_complete():
