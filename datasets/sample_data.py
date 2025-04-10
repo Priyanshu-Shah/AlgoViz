@@ -15,7 +15,7 @@ def generate_linear_data(n_samples=100, noise=10.0, seed=42):
     np.random.seed(seed)
     
     # Generate X values
-    X = np.linspace(0, 10, n_samples)
+    X = np.linspace(-8, 8, n_samples)
     
     # True relationship: y = 2x + 5 + noise
     true_coef = 2.0

@@ -51,13 +51,6 @@ function HomePage() {
       implemented: true
     },
     {
-      name: "Random Forest",
-      description: "Ensemble method using multiple decision trees",
-      path: "/random-forest",
-      image: "https://cdn-icons-png.flaticon.com/512/6461/6461365.png",
-      implemented: false
-    },
-    {
       name: "Support Vector Machine",
       description: "Classify data by finding optimal hyperplanes",
       path: "/svm",
