@@ -1292,7 +1292,7 @@ def ann_predict():
         print(f"Error in ANN prediction endpoint: {str(e)}")
         print(error_traceback)
         return jsonify({"error": str(e), "traceback": error_traceback}), 500
-
+    
 @app.route('/api/ann/sample_data', methods=['POST'])
 def ann_sample_data():
     try:
@@ -1303,6 +1303,18 @@ def ann_sample_data():
         n_samples = data.get('count', 100)
         n_clusters = data.get('n_clusters', 2)
         variance = data.get('variance', 0.5)
+        
+        # Handle specific dataset types
+        if dataset_type == 'xor':
+            # XOR always has 2 classes
+            n_clusters = 2
+        elif dataset_type == 'circle':
+            # Circle pattern uses 'circles' dataset type
+            dataset_type = 'circles'
+            n_clusters = 2  # circles dataset always has 2 classes
+        elif dataset_type == 'spiral':
+            # For spiral, n_clusters specifies the number of spiral arms
+            n_clusters = max(2, min(n_clusters, 5))  # Limit between 2 and 5 spiral arms
         
         # Generate sample data
         sample_data = generate_sample_data(
@@ -1319,7 +1331,10 @@ def ann_sample_data():
         error_traceback = traceback.format_exc()
         print(f"Error in ANN sample data endpoint: {str(e)}")
         print(error_traceback)
-        return jsonify({"error": str(e), "traceback": error_traceback}), 500
+        return jsonify({
+            "error": str(e), 
+            "traceback": error_traceback
+        }), 500
     
 
 from flask import jsonify, request

@@ -33,7 +33,7 @@ function ANN() {
         epochs: 100,
         batchSize: 32,
         activation: 'relu',
-        outputActivation: 'sigmoid'
+        outputActivation: 'softmax'
     });
 
     // Canvas ref and state for interactive plotting
@@ -176,7 +176,6 @@ function ANN() {
         }
     };
 
-    // Update the drawPoints function
     const drawPoints = (ctx, canvas, points) => {
         if (!points || points.length === 0) return;
         
@@ -184,42 +183,56 @@ function ANN() {
             // Convert data coordinates to screen coordinates
             const x = ((parseFloat(point.x) - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
             const y = canvas.height - ((parseFloat(point.y) - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-
+            
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            
+            // Determine fill color based on point type and class
             if (point.isPredicted) {
-                // Draw predicted points as squares
-                const squareSize = 10; // Size of the square
-                ctx.beginPath();
-                ctx.rect(x - squareSize/2, y - squareSize/2, squareSize, squareSize);
-                
-                // Predicted points that haven't been classified yet are gray
-                if (point.predictedClass === undefined) {
-                    ctx.fillStyle = 'rgba(156, 163, 175, 0.7)'; // Gray for unpredicted points
+                if (point.predictedClass !== undefined) {
+                    // After prediction, color based on predicted class
+                    if (point.predictedClass === 0) {
+                        ctx.fillStyle = 'rgba(59, 130, 246, 0.7)'; // Blue for class 0
+                        ctx.strokeStyle = '#1e40af';
+                    } else if (point.predictedClass === 1) {
+                        ctx.fillStyle = 'rgba(239, 68, 68, 0.7)'; // Red for class 1
+                        ctx.strokeStyle = '#b91c1c';
+                    } else if (point.predictedClass === 2) {
+                        ctx.fillStyle = 'rgba(34, 197, 94, 0.7)'; // Green for class 2
+                        ctx.strokeStyle = '#15803d';
+                    } else {
+                        ctx.fillStyle = 'rgba(156, 163, 175, 0.7)'; // Gray for unknown class
+                        ctx.strokeStyle = '#4b5563';
+                    }
                 } else {
-                    // Use class colors for predicted points
-                    ctx.fillStyle = point.predictedClass === 0 ? 
-                        'rgba(59, 130, 246, 0.7)' : // Blue for class 0
-                        'rgba(239, 68, 68, 0.7)';  // Red for class 1
+                    // Before prediction, use grey for unpredicted points
+                    ctx.fillStyle = 'rgba(156, 163, 175, 0.7)';
+                    ctx.strokeStyle = '#4b5563';
                 }
-                
-                // Dotted border for prediction points
+                // Use dashed outline for prediction points
                 ctx.setLineDash([2, 2]);
             } else {
-                // Regular training points as circles
-                ctx.beginPath();
-                ctx.arc(x, y, 6, 0, Math.PI * 2);
-                
-                // Regular training points
-                ctx.fillStyle = point.class === 0 ? 
-                    'rgba(59, 130, 246, 0.7)' : // Blue for class 0
-                    'rgba(239, 68, 68, 0.7)';  // Red for class 1
-                ctx.setLineDash([]); // Solid line
+                // Training points
+                if (point.class === 0) {
+                    ctx.fillStyle = 'rgba(59, 130, 246, 0.7)'; // Blue for class 0
+                    ctx.strokeStyle = '#1e40af';
+                } else if (point.class === 1) {
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.7)'; // Red for class 1
+                    ctx.strokeStyle = '#b91c1c';
+                } else if (point.class === 2) {
+                    ctx.fillStyle = 'rgba(34, 197, 94, 0.7)'; // Green for class 2
+                    ctx.strokeStyle = '#15803d';
+                } else {
+                    ctx.fillStyle = 'rgba(156, 163, 175, 0.7)'; // Gray fallback
+                    ctx.strokeStyle = '#4b5563';
+                }
+                ctx.setLineDash([]);
             }
-
+            
             ctx.fill();
-            ctx.strokeStyle = '#000000'; // Black for outline
             ctx.lineWidth = 1;
             ctx.stroke();
-            ctx.setLineDash([]); // Reset line dash
+            ctx.setLineDash([]);
         });
     };
 
@@ -241,7 +254,7 @@ function ANN() {
         const fullNetwork = [
             { neurons: 2, activation: 'input' },  // Input layer: x, y coordinates
             ...networkArchitecture.hiddenLayers,
-            { neurons: 1, activation: networkArchitecture.outputActivation }  // Output layer
+            { neurons: 3, activation: networkArchitecture.outputActivation }  // Output layer with 3 neurons
         ];
         
         const numLayers = fullNetwork.length;
@@ -351,7 +364,7 @@ function ANN() {
         return { x: dataX, y: dataY };
     };
 
-    // Update the useEffect for canvas drawing
+    // Modify the useEffect for canvas drawing
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -368,33 +381,9 @@ function ANN() {
         // Draw grid and axes
         drawGrid(ctx, canvas);
         
-        // If a decision boundary image is available, draw it first
-        if (decisionBoundary) {
-            const img = new Image();
-            
-            // Add error handling for image loading
-            img.onerror = () => {
-                console.error("Failed to load decision boundary image");
-                setError("Failed to display decision boundary. The image may be corrupted.");
-            };
-            
-            img.onload = () => {
-                // Draw the decision boundary image covering the entire canvas
-                ctx.globalAlpha = 0.7; // Make it semi-transparent
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                ctx.globalAlpha = 1.0; // Reset alpha
-                
-                // Then draw the points on top
-                drawPoints(ctx, canvas, [...getValidPoints(), ...predictedPoints]);
-            };
-            
-            // Set the image source
-            img.src = `data:image/png;base64,${decisionBoundary}`;
-        } else {
-            // Just draw points if no decision boundary
-            drawPoints(ctx, canvas, [...getValidPoints(), ...predictedPoints]);
-        }
-    }, [dataPairs, predictedPoints, decisionBoundary]);
+        // Just draw points - don't show decision boundary on main canvas
+        drawPoints(ctx, canvas, [...getValidPoints(), ...predictedPoints]);
+    }, [dataPairs, predictedPoints]);
 
     // Update the handleCanvasClick function for better mapping
     const handleCanvasClick = (e) => {
@@ -489,9 +478,16 @@ function ANN() {
         setLoading(true);
         setShowSampleDataModal(false);
         
+        // Map frontend dataset type names to backend names
+        const backendDatasetType = {
+            'xor': 'xor',
+            'circle': 'circle',
+            'spiral': 'spiral'
+        }[sampleDataType] || 'blobs';
+        
         // Call the backend API
         axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/ann/sample_data`, {
-            dataset_type: sampleDataType,
+            dataset_type: backendDatasetType,
             count: sampleCount,
             n_clusters: sampleClusters,
             variance: sampleVariance
@@ -520,7 +516,7 @@ function ANN() {
             console.error("Error generating sample data:", err);
             setError("Failed to generate sample data: " + (err.response?.data?.error || err.message));
             
-            // Create some simple default data
+            // Only as a last resort, create minimal default data
             const defaultData = generateDefaultSampleData();
             setDataPairs(defaultData);
         })
@@ -529,29 +525,15 @@ function ANN() {
         });
     };
     
-    // Generate default sample data if API fails
     const generateDefaultSampleData = () => {
-        const data = [];
+        // Instead of hard-coding data, show an error message
+        setError("Failed to fetch sample data. Please try again.");
         
-        // Generate some points for class 0 (clustered in top left)
-        for (let i = 0; i < 10; i++) {
-            data.push({
-                x: (-5 + Math.random() * 3).toFixed(2),
-                y: (3 + Math.random() * 3).toFixed(2),
-                class: 0
-            });
-        }
-        
-        // Generate some points for class 1 (clustered in bottom right)
-        for (let i = 0; i < 10; i++) {
-            data.push({
-                x: (2 + Math.random() * 3).toFixed(2),
-                y: (-5 + Math.random() * 3).toFixed(2),
-                class: 1
-            });
-        }
-        
-        return data;
+        // Return a minimal set of points that at least won't crash the app
+        return [
+            { x: '-2', y: '-2', class: 0 },
+            { x: '2', y: '2', class: 1 }
+        ];
     };
 
     const resetData = () => {
@@ -640,43 +622,44 @@ function ANN() {
         }
     };
 
-    // Predict function
     const handlePredict = async () => {
         if (!results) {
             setError('Please train the neural network first before making predictions.');
             return;
         }
-
+    
         if (predictedPoints.length === 0) {
             setError('Please add at least one point to predict by clicking on the canvas in testing mode.');
             return;
         }
-
+    
         setError(null);
         setLoading(true);
-
+    
         try {
             // Prepare data for the API
             const apiData = {
-                model_id: results.model_id,
-                X: predictedPoints.map(point => [parseFloat(point.x), parseFloat(point.y)])
+                model: results, 
+                points: predictedPoints.map(point => [parseFloat(point.x), parseFloat(point.y)])
             };
-
-            const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/ann/predict`, apiData);
-
+    
+            const response = await axios.post('http://localhost:5000/api/ann/predict', apiData);
+    
             if (response.data.error) {
                 throw new Error(response.data.error);
             }
-
+    
             // Update predicted points with their predicted classes
             const newPredictedPoints = [...predictedPoints];
             response.data.predictions.forEach((pred, index) => {
                 if (index < newPredictedPoints.length) {
-                    newPredictedPoints[index].predictedClass = pred > 0.5 ? 1 : 0;
+                    // For multi-class classification, the prediction will be the class index
+                    let predictedClass = parseInt(pred);
+                    newPredictedPoints[index].predictedClass = predictedClass;
                     newPredictedPoints[index].rawPrediction = pred;
                 }
             });
-
+    
             setPredictedPoints(newPredictedPoints);
         } catch (err) {
             setError(`Error during prediction: ${err.message}`);
@@ -1067,7 +1050,7 @@ function ANN() {
                                         <strong>Points to Predict:</strong> {predictedPoints.length}
                                     </div>
                                     <div>
-                                        <strong>Classes:</strong> {getValidPoints().length > 0 ? [...new Set(getValidPoints().map(p => p.class))].length : 0}
+                                        <strong>Classes:</strong> 3
                                     </div>
                                 </div>
                             </div>
@@ -1347,31 +1330,6 @@ function ANN() {
                                         <span>1000</span>
                                     </div>
                                 </div>
-                                
-                                {/* Output Activation */}
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label style={{ 
-                                        display: 'block', 
-                                        marginBottom: '0.5rem',
-                                        fontSize: '0.9rem',
-                                        color: '#4b5563' 
-                                    }}>
-                                        Output Activation
-                                    </label>
-                                    <select
-                                        value={networkArchitecture.outputActivation}
-                                        onChange={(e) => handleHyperparamChange('outputActivation', e.target.value)}
-                                        style={{
-                                            width: '100%',
-                                            padding: '0.4rem',
-                                            border: '1px solid #d1d5db',
-                                            borderRadius: '0.25rem'
-                                        }}
-                                    >
-                                        <option value="sigmoid">Sigmoid</option>
-                                        <option value="softmax">Softmax</option>
-                                    </select>
-                                </div>
                             </div>
                             
                             {/* Interaction Mode Controls */}
@@ -1427,7 +1385,7 @@ function ANN() {
                                         <p style={{ marginBottom: '0.75rem', color: '#4b5563', fontSize: '1rem' }}>
                                             Select class for training points:
                                         </p>
-                                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
                                             <button
                                                 onClick={() => setCurrentClass(0)}
                                                 style={{
@@ -1459,6 +1417,22 @@ function ANN() {
                                                 }}
                                             >
                                                 Class 1
+                                            </button>
+                                            <button
+                                                onClick={() => setCurrentClass(2)}
+                                                style={{
+                                                    padding: '0.75rem 0.5rem',
+                                                    border: 'none',
+                                                    borderRadius: '0.5rem',
+                                                    backgroundColor: currentClass === 2 ? 'rgba(34, 197, 94, 1)' : 'rgba(34, 197, 94, 0.1)',
+                                                    color: currentClass === 2 ? 'white' : '#15803d',
+                                                    cursor: 'pointer',
+                                                    fontWeight: '500',
+                                                    flex: 1,
+                                                    fontSize: '0.95rem'
+                                                }}
+                                            >
+                                                Class 2
                                             </button>
                                         </div>
                                     </div>
