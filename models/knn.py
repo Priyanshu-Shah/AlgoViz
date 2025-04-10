@@ -4,11 +4,73 @@ import matplotlib
 matplotlib.use('Agg')  # Use Agg backend (non-interactive)
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+# from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler
 import io
 import base64
 import traceback
+
+
+class KNeighborsClassifier:
+    def __init__(self, n_neighbors=5):
+        self.n_neighbors = n_neighbors
+        self.X = None
+        self.y = None
+
+    def fit(self, X, y):
+        self.X = np.array(X)
+        self.y = np.array(y)
+        return self
+
+    def predict(self, X):
+        X = np.array(X)
+        predictions = []
+        
+        for x in X:
+            # Calculate distances to all training points
+            distances = np.sqrt(np.sum((self.X - x) ** 2, axis=1))
+            
+            # Get indices of k nearest neighbors
+            k_nearest_indices = np.argsort(distances)[:self.n_neighbors]
+            
+            # Get labels of k nearest neighbors
+            k_nearest_labels = self.y[k_nearest_indices]
+            
+            # Return most common class
+            unique_labels, counts = np.unique(k_nearest_labels, return_counts=True)
+            predictions.append(unique_labels[np.argmax(counts)])
+            
+        return np.array(predictions)
+
+class KNeighborsRegressor:
+    def __init__(self, n_neighbors=5):
+        self.n_neighbors = n_neighbors
+        self.X = None
+        self.y = None
+
+    def fit(self, X, y):
+        self.X = np.array(X)
+        self.y = np.array(y, dtype=float)
+        return self
+
+    def predict(self, X):
+        X = np.array(X)
+        predictions = []
+        
+        for x in X:
+            # Calculate distances to all training points
+            distances = np.sqrt(np.sum((self.X - x) ** 2, axis=1))
+            
+            # Get indices of k nearest neighbors
+            k_nearest_indices = np.argsort(distances)[:self.n_neighbors]
+            
+            # Get values of k nearest neighbors
+            k_nearest_values = self.y[k_nearest_indices]
+            
+            # Return mean value
+            predictions.append(np.mean(k_nearest_values))
+            
+        return np.array(predictions)
 
 def predict_single_point(data, predict_point, n_neighbors=5):
     """
