@@ -33,14 +33,14 @@ function HomePage() {
       name: "Linear Regression",
       description: "Predict continuous values based on linear relationships",
       path: "/lin-reg",
-      image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSCABPg4UbkODVQ2eMrkVobSCh3HVn2lqoiyw&s",
+      image: "https://cdn.iconscout.com/icon/premium/png-256-thumb/linear-regression-1522289-1289191.png",
       implemented: true
     },
     {
       name: "K-Nearest Neighbors",
       description: "Classify or regress based on closest training examples",
       path: "/knn",
-      image: "https://cdn.iconscout.com/icon/premium/png-256-thumb/knn-algorithm-2130387-1794931.png",
+      image: "/logo/knn.png",
       implemented: true
     },
     {
@@ -54,14 +54,14 @@ function HomePage() {
       name: "Support Vector Machine",
       description: "Classify data by finding optimal hyperplanes",
       path: "/svm",
-      image: "https://cdn5.vectorstock.com/i/1000x1000/76/89/support-machine-svm-algorithm-color-icon-vector-50297689.jpg",
+      image: "https://cdn.iconscout.com/icon/premium/png-256-thumb/support-vector-machines-8295140-6881761.png?f=webp&w=256",
       implemented: true
     },
     {
       name: "Artificial Neural Network",
       description: "Deep learning model inspired by the human brain",
       path: "/ann",
-      image: "https://cdn-icons-png.flaticon.com/512/2103/2103633.png",
+      image: "https://w7.pngwing.com/pngs/613/402/png-transparent-black-dot-with-lines-illustration-artificial-neural-network-deep-learning-machine-learning-artificial-intelligence-computer-network-others-miscellaneous-angle-symmetry.png",
       implemented: true
     }
   ];
@@ -78,14 +78,14 @@ function HomePage() {
       name: "DBSCAN",
       description: "Density-based spatial clustering of applications with noise",
       path: "/DBScan",
-      image: "https://cdn-icons-png.flaticon.com/512/9464/9464616.png",
+      image: "/logo/dbscan.png",
       implemented: true
     },
     {
       name: "Principal Component Analysis",
       description: "Reduce dimensionality while preserving variance",
       path: "/pca",
-      image: "https://cdn-icons-png.flaticon.com/512/4616/4616734.png",
+      image: "/logo/pca.png",
       implemented: true
     }
   ];

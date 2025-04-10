@@ -530,15 +530,35 @@ function LinReg() {
       </div>
 
       <p className="model-description">
-        Linear regression is a supervised learning algorithm used to predict a continuous target variable based on one or more predictor variables. 
-        It assumes a linear relationship between the input variables and the target.
+        Linear Regression is a supervised learning algorithm that models the relationship between 
+        a dependent variable and one or more independent variables using a linear equation.
+        <button 
+            onClick={() => navigate('/docs')} 
+            style={{
+                background: 'none',
+                border: 'none',
+                color: '#3b82f6',
+                cursor: 'pointer',
+                marginLeft: '8px',
+                padding: '0',
+                display: 'inline-flex',
+                alignItems: 'center'
+            }}
+            title="More information"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+        </button>
       </p>
 
       {backendStatus === "disconnected" && (
         <div className="backend-status error">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
           <span>

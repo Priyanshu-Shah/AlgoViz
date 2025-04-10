@@ -909,15 +909,34 @@ function ANN() {
                 </div>
 
                 <p className="model-description">
-                    Artificial Neural Networks (ANN) are computing systems inspired by the biological neural networks in animal brains.
-                    They can learn from data to perform tasks like classification through a network of nodes and weighted connections.
-                </p>
+                    Artificial Neural Networks are computing systems inspired by biological neural networks. They can learn to perform tasks by considering examples, without being explicitly programmed.
+                    <button 
+                        onClick={() => navigate('/docs')} 
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#3b82f6',
+                            cursor: 'pointer',
+                            marginLeft: '8px',
+                            padding: '0',
+                            display: 'inline-flex',
+                            alignItems: 'center'
+                        }}
+                        title="More information"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                    </button>
+                  </p>
 
                 {backendStatus === "disconnected" && (
                     <div className="backend-status error">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
                             <line x1="12" y1="16" x2="12.01" y2="16"></line>
                         </svg>
                         <span>

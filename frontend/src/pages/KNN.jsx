@@ -671,13 +671,33 @@ function KNN() {
       <p className="model-description">
         K-Nearest Neighbors is a versatile machine learning algorithm used for both classification and regression tasks.
         It makes predictions based on the k most similar data points in the training set.
+        <button 
+            onClick={() => navigate('/docs')} 
+            style={{
+                background: 'none',
+                border: 'none',
+                color: '#3b82f6',
+                cursor: 'pointer',
+                marginLeft: '8px',
+                padding: '0',
+                display: 'inline-flex',
+                alignItems: 'center'
+            }}
+            title="More information"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+        </button>
       </p>
       
       {backendStatus === "disconnected" && (
         <div className="backend-status error">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
           <span>
@@ -1152,31 +1172,6 @@ function KNN() {
                   }}></div>
                   <span>Neighbors</span>
                 </div>
-              </div>
-            </div>
-            
-            {/* SMALLER: How KNN Works */}
-            <div style={{ 
-              width: '100%',
-              backgroundColor: 'white', 
-              padding: '1rem', 
-              borderRadius: '6px', 
-              border: '1px solid #e5e7eb',
-              fontSize: '0.85rem'
-            }}>
-              <h3 style={{ marginBottom: '0.75rem', fontSize: '0.95rem', fontWeight: '500' }}>How KNN Works</h3>
-              <div style={{ color: '#4b5563', lineHeight: '1.4' }}>
-                <p style={{ marginBottom: '0.5rem' }}>
-                  KNN predicts by finding the K nearest neighbors:
-                </p>
-                <ol style={{ paddingLeft: '1.25rem', marginBottom: '0.5rem' }}>
-                  <li>Find K closest points from training data</li>
-                  <li>Classification: use majority class</li>
-                  <li>Regression: use average value</li>
-                </ol>
-                <p style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>
-                  Hover over predictions to see connections to neighbors.
-                </p>
               </div>
             </div>
           </div>

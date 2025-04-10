@@ -1012,13 +1012,33 @@ function SVM(){
             <p className="model-description">
                 Support Vector Machine (SVM) is a supervised learning algorithm used for classification and regression tasks. 
                 It finds the optimal hyperplane to separate data points into different classes.
+                <button 
+                    onClick={() => navigate('/docs')} 
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#3b82f6',
+                        cursor: 'pointer',
+                        marginLeft: '8px',
+                        padding: '0',
+                        display: 'inline-flex',
+                        alignItems: 'center'
+                    }}
+                    title="More information"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                    </svg>
+                </button>
             </p>
 
             {backendStatus === "disconnected" && (
                 <div className="backend-status error">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
                         <line x1="12" y1="16" x2="12.01" y2="16"></line>
                     </svg>
                     <span>
@@ -1215,18 +1235,6 @@ function SVM(){
                                     }}></div>
                                     <span>Support Vector</span>
                                 </div>
-                            </div>
-                            
-                            <h3 style={{ marginTop: '1rem', marginBottom: '0.75rem', fontSize: '0.95rem', fontWeight: '500' }}>How SVM Works</h3>
-                            <div style={{ color: '#4b5563', lineHeight: '1.4' }}>
-                                <p style={{ marginBottom: '0.5rem' }}>
-                                    Support Vector Machine works by finding the optimal hyperplane:
-                                </p>
-                                <ol style={{ paddingLeft: '1.25rem', marginBottom: '0.5rem' }}>
-                                    <li>Finds maximum margin between classes</li>
-                                    <li>Support vectors are critical points</li>
-                                    <li>Kernels transform data for nonlinear boundaries</li>
-                                </ol>
                             </div>
                         </div>
                     </div>

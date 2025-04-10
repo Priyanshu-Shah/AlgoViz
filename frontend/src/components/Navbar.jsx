@@ -18,7 +18,7 @@ function Navbar() {
         </Link>
         
         <a 
-          href="https://github.com/Priyanshu-Shah/PRML_project" 
+          href="https://github.com/Priyanshu-Shah/AlgoViz" 
           target="_blank" 
           rel="noopener noreferrer"
           className="github-link"

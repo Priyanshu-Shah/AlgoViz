@@ -442,6 +442,26 @@ const drawPoints = (ctx, canvas, points, labels, centroids) => {
       <p className="model-description">
         K-means clustering is an unsupervised learning algorithm that partitions data into K clusters,
         where each data point belongs to the cluster with the nearest mean.
+        <button 
+            onClick={() => navigate('/docs')} 
+            style={{
+                background: 'none',
+                border: 'none',
+                color: '#3b82f6',
+                cursor: 'pointer',
+                marginLeft: '8px',
+                padding: '0',
+                display: 'inline-flex',
+                alignItems: 'center'
+            }}
+            title="More information"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+        </button>
       </p>
 
       {backendStatus === "disconnected" && (

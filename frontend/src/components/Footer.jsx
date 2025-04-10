@@ -16,7 +16,7 @@ function Footer() {
           <Link to="/about" className="footer-link">About</Link>
           <Link to="/docs" className="footer-link">Documentation</Link>
           <a 
-            href="https://github.com/yourusername/PRML_project" 
+            href="https://github.com/Priyanshu-Shah/AlgoViz" 
             target="_blank" 
             rel="noopener noreferrer"
             className="footer-link"
