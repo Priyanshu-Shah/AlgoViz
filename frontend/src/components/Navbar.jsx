@@ -14,7 +14,7 @@ function Navbar() {
     >
       <div className="navbar-container">
         <Link to="/" className="logo">
-          <span className="logo-text">ML Visualizer</span>
+          <span className="logo-text">AlgoViz</span>
         </Link>
         
         <a 

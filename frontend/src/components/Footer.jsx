@@ -9,7 +9,7 @@ function Footer() {
     <footer className="footer">
       <div className="footer-container">
         <div className="footer-content">
-          <p className="copyright">© {year} ML Visualizer</p>
+          <p className="copyright">© {year} AlgoViz</p>
           <p className="tagline">Exploring machine learning algorithms through interactive visualization.</p>
         </div>
         <div className="footer-links">
