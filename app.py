@@ -494,15 +494,20 @@ def pca_sample_data():
     try:
         # Use the generate_pca_data function from the PCA module
         from models.PCA import generate_pca_data
-        
-        # Generate sample data
-        data = generate_pca_data()
-        
+
+        # Get query parameters
+        n_samples = request.args.get('n_samples', default=50, type=int)
+        noise = request.args.get('noise', default=0.1, type=float)
+
+        # Generate sample data with parameters
+        data = generate_pca_data(n_samples=n_samples, noise=noise)
+
         return jsonify(data)
     except Exception as e:
         import traceback
         print(f"Error generating PCA sample data: {str(e)}")
         print(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/dtree-classification', methods=['POST'])
 def dtree_classification():
