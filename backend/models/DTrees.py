@@ -1,14 +1,747 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
-import matplotlib.patches as patches
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, plot_tree, export_graphviz
+from sklearn.tree import export_graphviz
 from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
 import base64
 from io import BytesIO, StringIO
-import json
 import pydot
-import os
+from scipy import sparse
+
+# Custom Node class for decision trees
+class Node:
+    def __init__(self, feature=None, threshold=None, value=None, left=None, right=None):
+        self.feature = feature      # Feature index used for splitting
+        self.threshold = threshold  # Threshold value for the split
+        self.value = value          # Node prediction value/distribution
+        self.left = left            # Left child node
+        self.right = right          # Right child node
+
+# Custom TreeStructure class to mimic sklearn's tree_ attribute
+class TreeStructure:
+    def __init__(self):
+        self.node_count = 0
+        self.children_left = []
+        self.children_right = []
+        self.feature = []
+        self.threshold = []
+        self.value = []
+        self.impurity = []
+        self.n_node_samples = []
+        self.weighted_n_node_samples = []
+        self.n_outputs = 1
+        self.n_classes = None 
+
+class DecisionTreeClassifier:
+    def __init__(self, criterion='gini', max_depth=None, min_samples_split=2, 
+                 min_samples_leaf=1, random_state=None):
+        self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.random_state = random_state
+        self.tree_ = None
+        self.n_features_in_ = None
+        self.feature_importances_ = None
+        self.classes_ = None
+        self.n_classes_ = None
+        self.root = None
+        self._node_count = 0
+        
+    def fit(self, X, y):
+        """
+        Build the decision tree from the training set (X, y).
+        """
+        # Convert inputs to numpy arrays
+        X = np.array(X)
+        y = np.array(y)
+        
+        # Initialize properties
+        self.n_features_in_ = X.shape[1]
+        self.classes_, counts = np.unique(y, return_counts=True)
+        self.n_classes_ = len(self.classes_)
+        
+        # Initialize tree structure
+        self.tree_ = TreeStructure()
+        self._node_count = 0
+        
+        # Build tree recursively
+        self.root = self._build_tree(X, y, depth=0)
+        
+        # Convert tree to sklearn-like structure
+        self._build_sklearn_tree_structure()
+        
+        # Calculate feature importances
+        self._calculate_feature_importances()
+        
+        return self
+    
+    def _build_tree(self, X, y, depth):
+        """Build tree recursively"""
+        n_samples, n_features = X.shape
+        
+        # Check stopping criteria
+        if (self.max_depth is not None and depth >= self.max_depth) or \
+           n_samples < self.min_samples_split or \
+           len(np.unique(y)) == 1:
+            # Create leaf node
+            class_counts = np.zeros((1, self.n_classes_))
+            for i, cls in enumerate(self.classes_):
+                class_counts[0, i] = np.sum(y == cls)
+            return Node(value=class_counts)
+        
+        # Find best split
+        best_feature, best_threshold = self._find_best_split(X, y)
+        
+        if best_feature is None:
+            # No good split found, create leaf
+            class_counts = np.zeros((1, self.n_classes_))
+            for i, cls in enumerate(self.classes_):
+                class_counts[0, i] = np.sum(y == cls)
+            return Node(value=class_counts)
+        
+        # Split data
+        left_mask = X[:, best_feature] <= best_threshold
+        right_mask = ~left_mask
+        
+        # Build subtrees
+        left_subtree = self._build_tree(X[left_mask], y[left_mask], depth + 1)
+        right_subtree = self._build_tree(X[right_mask], y[right_mask], depth + 1)
+        
+        return Node(
+            feature=best_feature,
+            threshold=best_threshold,
+            left=left_subtree,
+            right=right_subtree,
+            value=self._node_value(y)
+        )
+    
+    def _node_value(self, y):
+        """Calculate the class distribution for a node"""
+        class_counts = np.zeros((1, self.n_classes_))
+        for i, cls in enumerate(self.classes_):
+            class_counts[0, i] = np.sum(y == cls)
+        return class_counts
+    
+    def _gini(self, y):
+        """Calculate Gini impurity"""
+        m = len(y)
+        if m == 0:
+            return 0
+        
+        # Calculate class probabilities
+        _, counts = np.unique(y, return_counts=True)
+        probabilities = counts / m
+        return 1 - np.sum(probabilities**2)
+    
+    def _entropy(self, y):
+        """Calculate entropy"""
+        m = len(y)
+        if m == 0:
+            return 0
+            
+        # Calculate class probabilities
+        _, counts = np.unique(y, return_counts=True)
+        probabilities = counts / m
+        return -np.sum(probabilities * np.log2(probabilities + 1e-10))  # Add epsilon to prevent log(0)
+    
+    def _calculate_impurity(self, y):
+        """Calculate impurity based on the criterion"""
+        if self.criterion == 'gini':
+            return self._gini(y)
+        else:  # entropy
+            return self._entropy(y)
+    
+    def _find_best_split(self, X, y):
+        """Find the best feature/threshold to split on"""
+        m, n = X.shape
+        best_gain = -np.inf
+        best_feature, best_threshold = None, None
+        
+        # Calculate current impurity
+        current_impurity = self._calculate_impurity(y)
+        
+        for feature_idx in range(n):
+            # Get unique values for this feature
+            thresholds = np.unique(X[:, feature_idx])
+            
+            for threshold in thresholds:
+                # Split data
+                left_mask = X[:, feature_idx] <= threshold
+                right_mask = ~left_mask
+                
+                # Skip if either split is too small
+                if np.sum(left_mask) < self.min_samples_leaf or np.sum(right_mask) < self.min_samples_leaf:
+                    continue
+                
+                # Calculate impurity for left and right splits
+                left_impurity = self._calculate_impurity(y[left_mask])
+                right_impurity = self._calculate_impurity(y[right_mask])
+                
+                # Calculate information gain
+                n_left = np.sum(left_mask)
+                n_right = np.sum(right_mask)
+                gain = current_impurity - (n_left/m * left_impurity + n_right/m * right_impurity)
+                
+                # Update if this is the best split so far
+                if gain > best_gain:
+                    best_gain = gain
+                    best_feature = feature_idx
+                    best_threshold = threshold
+        
+        return best_feature, best_threshold
+    
+    def _build_sklearn_tree_structure(self):
+        """Build a sklearn-compatible tree structure"""
+        # Create tree structure with required attributes
+        self.tree_ = TreeStructure()
+        self.tree_.n_outputs = 1
+
+        # Set number of classes based on model type
+        if hasattr(self, 'n_classes_'):
+            self.tree_.n_classes = np.array([self.n_classes_], dtype=np.intp)
+        else:
+            self.tree_.n_classes = np.array([1], dtype=np.intp)
+
+        # Initialize arrays to store the tree structure
+        self.tree_.children_left = []
+        self.tree_.children_right = []
+        self.tree_.feature = []
+        self.tree_.threshold = []
+        self.tree_.value = []
+        self.tree_.impurity = []
+        self.tree_.n_node_samples = []
+        self.tree_.weighted_n_node_samples = []
+
+        # First convert nodes to a list in depth-first order
+        nodes = []
+        self._collect_nodes_depth_first(self.root, nodes)
+
+        # Build node mappings for constructing the tree structure
+        node_to_id = {node: i for i, node in enumerate(nodes)}
+
+        # Fill arrays based on the node list
+        for node in nodes:
+            # Add node data
+            if node.feature is not None:  # Internal node
+                self.tree_.feature.append(node.feature)
+                self.tree_.threshold.append(node.threshold)
+            else:  # Leaf node
+                self.tree_.feature.append(-2)  # -2 indicates leaf in sklearn
+                self.tree_.threshold.append(-2)
+
+            self.tree_.value.append(node.value)
+            self.tree_.impurity.append(0.0)
+            sample_count = np.sum(node.value)
+            self.tree_.n_node_samples.append(int(sample_count))
+            self.tree_.weighted_n_node_samples.append(float(sample_count))
+
+            # Add child pointers
+            if node.left is not None:
+                self.tree_.children_left.append(node_to_id[node.left])
+            else:
+                self.tree_.children_left.append(-1)  # -1 indicates no child
+
+            if node.right is not None:
+                self.tree_.children_right.append(node_to_id[node.right])
+            else:
+                self.tree_.children_right.append(-1)  # -1 indicates no child
+
+        # Set the final node count
+        self.tree_.node_count = len(nodes)
+
+    def _collect_nodes_depth_first(self, node, nodes_list):
+        """Collect nodes in depth-first traversal order"""
+        if node is None:
+            return
+
+        # Add this node
+        nodes_list.append(node)
+
+        # Traverse left subtree first
+        self._collect_nodes_depth_first(node.left, nodes_list)
+
+        # Then traverse right subtree
+        self._collect_nodes_depth_first(node.right, nodes_list)
+    
+    def predict(self, X):
+        """Predict class for X"""
+        X = np.array(X)
+        
+        if X.ndim == 1:
+            return self._predict_single(X)
+        else:
+            return np.array([self._predict_single(x) for x in X])
+    
+    def _predict_single(self, x):
+        """Predict class for a single sample"""
+        node = self.root
+        
+        while node.feature is not None:  # Not a leaf
+            if x[node.feature] <= node.threshold:
+                node = node.left
+            else:
+                node = node.right
+        
+        # Return class with highest count
+        return self.classes_[np.argmax(node.value)]
+    
+    def predict_proba(self, X):
+        """Predict class probabilities for X"""
+        X = np.array(X)
+        
+        if X.ndim == 1:
+            return self._predict_proba_single(X)
+        else:
+            return np.array([self._predict_proba_single(x) for x in X])
+    
+    def _predict_proba_single(self, x):
+        """Predict class probabilities for a single sample"""
+        node = self.root
+        
+        while node.feature is not None:  # Not a leaf
+            if x[node.feature] <= node.threshold:
+                node = node.left
+            else:
+                node = node.right
+        
+        # Return normalized class distribution
+        class_counts = node.value[0]
+        return class_counts / np.sum(class_counts)
+    
+    def _calculate_feature_importances(self):
+        """Calculate feature importances"""
+        # Count feature appearances
+        feature_counts = np.zeros(self.n_features_in_)
+        
+        for feature_idx in self.tree_.feature:
+            if feature_idx >= 0:  # Not a leaf
+                feature_counts[feature_idx] += 1
+        
+        # Normalize
+        if np.sum(feature_counts) > 0:
+            self.feature_importances_ = feature_counts / np.sum(feature_counts)
+        else:
+            self.feature_importances_ = np.ones(self.n_features_in_) / self.n_features_in_
+    
+    def decision_path(self, X):
+        """Return the decision path in the tree"""
+        X = np.array(X)
+        n_samples = X.shape[0]
+        
+        # For each sample, find the path through the tree
+        indices = []
+        indptr = [0]
+        
+        for i in range(n_samples):
+            path = self._get_decision_path(X[i])
+            indices.extend(path)
+            indptr.append(len(indices))
+        
+        # Create a sparse matrix
+        data = np.ones(len(indices), dtype=np.int8)
+        n_nodes = self.tree_.node_count
+        result = sparse.csr_matrix((data, indices, indptr), shape=(n_samples, n_nodes))
+        return result
+    
+    def _get_decision_path(self, x):
+        """Get the node IDs traversed by a sample"""
+        path = []
+        node_id = 0  # Start at root
+        
+        while node_id != -1:
+            path.append(node_id)
+            
+            # If we're at a leaf node
+            if self.tree_.feature[node_id] < 0:
+                break
+            
+            # Navigate to next node
+            if x[self.tree_.feature[node_id]] <= self.tree_.threshold[node_id]:
+                node_id = self.tree_.children_left[node_id]
+            else:
+                node_id = self.tree_.children_right[node_id]
+        
+        return path
+    
+    def apply(self, X):
+        """Return the index of the leaf that each sample is predicted as"""
+        X = np.array(X)
+        
+        if X.ndim == 1:
+            return np.array([self._get_leaf_id(X)])
+        else:
+            return np.array([self._get_leaf_id(x) for x in X])
+    
+    def _get_leaf_id(self, x):
+        """Get the leaf node ID for a sample"""
+        node_id = 0  # Start at root
+        
+        while True:
+            # If we're at a leaf
+            if self.tree_.feature[node_id] < 0:
+                return node_id
+            
+            # Navigate to next node
+            if x[self.tree_.feature[node_id]] <= self.tree_.threshold[node_id]:
+                node_id = self.tree_.children_left[node_id]
+            else:
+                node_id = self.tree_.children_right[node_id]
+    
+    def get_depth(self):
+        """Return the depth of the tree"""
+        def _get_node_depth(node_id):
+            if node_id == -1:  # Invalid node
+                return 0
+                
+            left_depth = _get_node_depth(self.tree_.children_left[node_id]) if self.tree_.children_left[node_id] >= 0 else 0
+            right_depth = _get_node_depth(self.tree_.children_right[node_id]) if self.tree_.children_right[node_id] >= 0 else 0
+            
+            return max(left_depth, right_depth) + 1
+        
+        return _get_node_depth(0) if self.tree_ is not None else 0
+    
+    def get_n_leaves(self):
+        """Return the number of leaves"""
+        if self.tree_ is None:
+            return 0
+        
+        count = 0
+        for i in range(self.tree_.node_count):
+            # A node is a leaf if both children are -1
+            if self.tree_.children_left[i] == -1 and self.tree_.children_right[i] == -1:
+                count += 1
+                
+        return count
+
+class DecisionTreeRegressor:
+    def __init__(self, criterion='mse', max_depth=None, min_samples_split=2, 
+                 min_samples_leaf=1, random_state=None):
+        self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.random_state = random_state
+        self.tree_ = None
+        self.n_features_in_ = None
+        self.feature_importances_ = None
+        self.root = None
+        self._node_count = 0
+    
+    def fit(self, X, y):
+        """
+        Build the decision tree from the training set (X, y).
+        """
+        # Convert inputs to numpy arrays
+        X = np.array(X)
+        y = np.array(y)
+        
+        # Initialize properties
+        self.n_features_in_ = X.shape[1]
+        
+        # Initialize tree structure
+        self.tree_ = TreeStructure()
+        self._node_count = 0
+        
+        # Build tree recursively
+        self.root = self._build_tree(X, y, depth=0)
+        
+        # Convert tree to sklearn-like structure
+        self._build_sklearn_tree_structure()
+        
+        # Calculate feature importances
+        self._calculate_feature_importances()
+        
+        return self
+    
+    def _build_tree(self, X, y, depth):
+        """Build tree recursively"""
+        n_samples, n_features = X.shape
+        
+        # Check stopping criteria
+        if (self.max_depth is not None and depth >= self.max_depth) or \
+           n_samples < self.min_samples_split or \
+           np.all(y == y[0]):
+            # Create leaf node
+            return Node(value=np.array([[np.mean(y)]]))
+        
+        # Find best split
+        best_feature, best_threshold = self._find_best_split(X, y)
+        
+        if best_feature is None:
+            # No good split found, create leaf
+            return Node(value=np.array([[np.mean(y)]]))
+        
+        # Split data
+        left_mask = X[:, best_feature] <= best_threshold
+        right_mask = ~left_mask
+        
+        # Build subtrees
+        left_subtree = self._build_tree(X[left_mask], y[left_mask], depth + 1)
+        right_subtree = self._build_tree(X[right_mask], y[right_mask], depth + 1)
+        
+        return Node(
+            feature=best_feature,
+            threshold=best_threshold,
+            left=left_subtree,
+            right=right_subtree,
+            value=np.array([[np.mean(y)]])
+        )
+    
+    def _mse(self, y):
+        """Calculate mean squared error"""
+        return np.mean((y - np.mean(y)) ** 2) if len(y) > 0 else 0
+    
+    def _mae(self, y):
+        """Calculate mean absolute error"""
+        return np.mean(np.abs(y - np.mean(y))) if len(y) > 0 else 0
+    
+    def _calculate_impurity(self, y):
+        """Calculate impurity based on criterion"""
+        if self.criterion == 'mse':
+            return self._mse(y)
+        else:  # mae
+            return self._mae(y)
+    
+    def _find_best_split(self, X, y):
+        """Find the best feature/threshold to split on"""
+        m, n = X.shape
+        best_loss_reduction = -np.inf
+        best_feature, best_threshold = None, None
+        
+        # Calculate current impurity
+        current_impurity = self._calculate_impurity(y)
+        
+        for feature_idx in range(n):
+            # Get unique values for this feature
+            thresholds = np.unique(X[:, feature_idx])
+            
+            for threshold in thresholds:
+                # Split data
+                left_mask = X[:, feature_idx] <= threshold
+                right_mask = ~left_mask
+                
+                # Skip if either split is too small
+                if np.sum(left_mask) < self.min_samples_leaf or np.sum(right_mask) < self.min_samples_leaf:
+                    continue
+                
+                # Calculate impurity for left and right splits
+                left_impurity = self._calculate_impurity(y[left_mask])
+                right_impurity = self._calculate_impurity(y[right_mask])
+                
+                # Calculate loss reduction
+                n_left = np.sum(left_mask)
+                n_right = np.sum(right_mask)
+                loss_reduction = current_impurity - (n_left/m * left_impurity + n_right/m * right_impurity)
+                
+                # Update if this is the best split so far
+                if loss_reduction > best_loss_reduction:
+                    best_loss_reduction = loss_reduction
+                    best_feature = feature_idx
+                    best_threshold = threshold
+        
+        return best_feature, best_threshold
+    
+    def _build_sklearn_tree_structure(self):
+        """Build a sklearn-compatible tree structure"""
+        # Create tree structure with required attributes
+        self.tree_ = TreeStructure()
+        self.tree_.n_outputs = 1
+
+        # Set number of classes based on model type
+        if hasattr(self, 'n_classes_'):
+            self.tree_.n_classes = np.array([self.n_classes_], dtype=np.intp)
+        else:
+            self.tree_.n_classes = np.array([1], dtype=np.intp)
+
+        # Initialize arrays to store the tree structure
+        self.tree_.children_left = []
+        self.tree_.children_right = []
+        self.tree_.feature = []
+        self.tree_.threshold = []
+        self.tree_.value = []
+        self.tree_.impurity = []
+        self.tree_.n_node_samples = []
+        self.tree_.weighted_n_node_samples = []
+
+        # First convert nodes to a list in depth-first order
+        nodes = []
+        self._collect_nodes_depth_first(self.root, nodes)
+
+        # Build node mappings for constructing the tree structure
+        node_to_id = {node: i for i, node in enumerate(nodes)}
+
+        # Fill arrays based on the node list
+        for node in nodes:
+            # Add node data
+            if node.feature is not None:  # Internal node
+                self.tree_.feature.append(node.feature)
+                self.tree_.threshold.append(node.threshold)
+            else:  # Leaf node
+                self.tree_.feature.append(-2)  # -2 indicates leaf in sklearn
+                self.tree_.threshold.append(-2)
+
+            self.tree_.value.append(node.value)
+            self.tree_.impurity.append(0.0)
+            sample_count = np.sum(node.value)
+            self.tree_.n_node_samples.append(int(sample_count))
+            self.tree_.weighted_n_node_samples.append(float(sample_count))
+
+            # Add child pointers
+            if node.left is not None:
+                self.tree_.children_left.append(node_to_id[node.left])
+            else:
+                self.tree_.children_left.append(-1)  # -1 indicates no child
+
+            if node.right is not None:
+                self.tree_.children_right.append(node_to_id[node.right])
+            else:
+                self.tree_.children_right.append(-1)  # -1 indicates no child
+
+        # Set the final node count
+        self.tree_.node_count = len(nodes)
+
+    def _collect_nodes_depth_first(self, node, nodes_list):
+        """Collect nodes in depth-first traversal order"""
+        if node is None:
+            return
+
+        # Add this node
+        nodes_list.append(node)
+
+        # Traverse left subtree first
+        self._collect_nodes_depth_first(node.left, nodes_list)
+
+        # Then traverse right subtree
+        self._collect_nodes_depth_first(node.right, nodes_list)
+    
+    def predict(self, X):
+        """Predict target for X"""
+        X = np.array(X)
+        
+        if X.ndim == 1:
+            return self._predict_single(X)
+        else:
+            return np.array([self._predict_single(x) for x in X])
+    
+    def _predict_single(self, x):
+        """Predict target for a single sample"""
+        node = self.root
+        
+        while node.feature is not None:  # Not a leaf
+            if x[node.feature] <= node.threshold:
+                node = node.left
+            else:
+                node = node.right
+        
+        return node.value[0][0]  # Return predicted value
+    
+    def _calculate_feature_importances(self):
+        """Calculate feature importances"""
+        # Count feature appearances
+        feature_counts = np.zeros(self.n_features_in_)
+        
+        for feature_idx in self.tree_.feature:
+            if feature_idx >= 0:  # Not a leaf
+                feature_counts[feature_idx] += 1
+        
+        # Normalize
+        if np.sum(feature_counts) > 0:
+            self.feature_importances_ = feature_counts / np.sum(feature_counts)
+        else:
+            self.feature_importances_ = np.ones(self.n_features_in_) / self.n_features_in_
+    
+    def decision_path(self, X):
+        """Return the decision path in the tree"""
+        X = np.array(X)
+        n_samples = X.shape[0]
+        
+        # For each sample, find the path through the tree
+        indices = []
+        indptr = [0]
+        
+        for i in range(n_samples):
+            path = self._get_decision_path(X[i])
+            indices.extend(path)
+            indptr.append(len(indices))
+        
+        # Create a sparse matrix
+        data = np.ones(len(indices), dtype=np.int8)
+        n_nodes = self.tree_.node_count
+        result = sparse.csr_matrix((data, indices, indptr), shape=(n_samples, n_nodes))
+        return result
+    
+    def _get_decision_path(self, x):
+        """Get the node IDs traversed by a sample"""
+        path = []
+        node_id = 0  # Start at root
+        
+        while node_id != -1:
+            path.append(node_id)
+            
+            # If we're at a leaf node
+            if self.tree_.feature[node_id] < 0:
+                break
+            
+            # Navigate to next node
+            if x[self.tree_.feature[node_id]] <= self.tree_.threshold[node_id]:
+                node_id = self.tree_.children_left[node_id]
+            else:
+                node_id = self.tree_.children_right[node_id]
+        
+        return path
+    
+    def apply(self, X):
+        """Return the index of the leaf that each sample is predicted as"""
+        X = np.array(X)
+        
+        if X.ndim == 1:
+            return np.array([self._get_leaf_id(X)])
+        else:
+            return np.array([self._get_leaf_id(x) for x in X])
+    
+    def _get_leaf_id(self, x):
+        """Get the leaf node ID for a sample"""
+        node_id = 0  # Start at root
+        
+        while True:
+            # If we're at a leaf
+            if self.tree_.feature[node_id] < 0:
+                return node_id
+            
+            # Navigate to next node
+            if x[self.tree_.feature[node_id]] <= self.tree_.threshold[node_id]:
+                node_id = self.tree_.children_left[node_id]
+            else:
+                node_id = self.tree_.children_right[node_id]
+    
+    def get_depth(self):
+        """Return the depth of the tree"""
+        def _get_node_depth(node_id):
+            if node_id == -1:  # Invalid node
+                return 0
+                
+            left_depth = _get_node_depth(self.tree_.children_left[node_id]) if self.tree_.children_left[node_id] >= 0 else 0
+            right_depth = _get_node_depth(self.tree_.children_right[node_id]) if self.tree_.children_right[node_id] >= 0 else 0
+            
+            return max(left_depth, right_depth) + 1
+        
+        return _get_node_depth(0) if self.tree_ is not None else 0
+    
+    def get_n_leaves(self):
+        """Return the number of leaves"""
+        if self.tree_ is None:
+            return 0
+        
+        count = 0
+        for i in range(self.tree_.node_count):
+            # A node is a leaf if both children are -1
+            if self.tree_.children_left[i] == -1 and self.tree_.children_right[i] == -1:
+                count += 1
+                
+        return count
+
+
 
 def run_decision_tree_classification(data, max_depth=3, min_samples_split=2, criterion='gini'):
     """
