@@ -16,14 +16,17 @@ function LinReg() {
   const [alpha, setAlpha] = useState(0.01);
   const [iterations, setIterations] = useState(100);
   const [isHighAlpha, setIsHighAlpha] = useState(false);
+  const [showSampleDataModal, setShowSampleDataModal] = useState(false);
+  const [sampleCount, setSampleCount] = useState(30);
+  const [sampleNoise, setSampleNoise] = useState(5.0);
   
   // Canvas ref and state for interactive plotting
   const canvasRef = useRef(null);
   const [canvasDimensions] = useState({ width: 550, height: 400 });
-  // Fixed scale - no adjustment
+  // Updated scale to center the graph at the origin and set axes from -8 to 8
   const scale = {
-    x: { min: 0, max: 10 },
-    y: { min: 0, max: 10 }
+    x: { min: -8, max: 8 },
+    y: { min: -8, max: 8 }
   };
   
   // Check backend health on component mount
@@ -90,45 +93,61 @@ function LinReg() {
     
   }, [dataPairs, results]);
 
-  // Helper function to draw grid and axes
+  // Updated drawGrid function to reflect the new scale
   const drawGrid = (ctx, canvas) => {
     ctx.strokeStyle = '#e5e7eb';
     ctx.lineWidth = 0.5;
-    
+
     // Draw horizontal grid lines
-    for (let i = 0; i <= 10; i++) {
-      const y = canvas.height - (i / 10) * canvas.height;
+    for (let i = scale.y.min; i <= scale.y.max; i++) {
+      const y = canvas.height - ((i - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(canvas.width, y);
       ctx.stroke();
     }
-    
+
     // Draw vertical grid lines
-    for (let i = 0; i <= 10; i++) {
-      const x = (i / 10) * canvas.width;
+    for (let i = scale.x.min; i <= scale.x.max; i++) {
+      const x = ((i - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, canvas.height);
       ctx.stroke();
     }
-    
+
+    // Draw axes
+    ctx.strokeStyle = '#6b7280';
+    ctx.lineWidth = 1;
+
+    // X-axis
+    const xAxisY = canvas.height - ((0 - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+    ctx.beginPath();
+    ctx.moveTo(0, xAxisY);
+    ctx.lineTo(canvas.width, xAxisY);
+    ctx.stroke();
+
+    // Y-axis
+    const yAxisX = ((0 - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+    ctx.beginPath();
+    ctx.moveTo(yAxisX, 0);
+    ctx.lineTo(yAxisX, canvas.height);
+    ctx.stroke();
+
     // Draw axes labels
     ctx.fillStyle = '#4b5563';
     ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
-    
+
     // X-axis labels
-    for (let i = 0; i <= 10; i += 2) {
-      const x = (i / 10) * canvas.width;
-      const value = scale.x.min + (i / 10) * (scale.x.max - scale.x.min);
-      ctx.fillText(value.toFixed(1), x - 10, canvas.height - 5);
+    for (let i = scale.x.min; i <= scale.x.max; i += 2) {
+      const x = ((i - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+      ctx.fillText(i.toString(), x - 10, xAxisY + 15);
     }
-    
+
     // Y-axis labels
-    for (let i = 0; i <= 10; i += 2) {
-      const y = canvas.height - (i / 10) * canvas.height;
-      const value = scale.y.min + (i / 10) * (scale.y.max - scale.y.min);
-      ctx.fillText(value.toFixed(1), 5, y + 4);
+    for (let i = scale.y.min; i <= scale.y.max; i += 2) {
+      const y = canvas.height - ((i - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+      ctx.fillText(i.toString(), yAxisX + 5, y + 4);
     }
   };
 
@@ -259,19 +278,20 @@ function LinReg() {
     setDataPairs(newPairs);
   };
 
-  const loadSampleData = async () => {
+  const generateSampleDataWithOptions = async () => {
     setSampleLoading(true);
+    setShowSampleDataModal(false);
     setError(null);
-    
+
     try {
-      const sampleData = await getLinearRegressionSampleData();
-      
+      const sampleData = await getLinearRegressionSampleData(sampleCount, sampleNoise);
+
       // Convert sample data into pairs
       const pairs = sampleData.X.map((x, index) => ({
         x: x.toString(),
         y: sampleData.y[index].toString()
       }));
-      
+
       setDataPairs(pairs);
     } catch (err) {
       setError('Failed to load sample data. Please try again.');
@@ -344,6 +364,153 @@ function LinReg() {
     }
   };
 
+  const SampleDataModal = () => (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        padding: '1.5rem',
+        borderRadius: '8px',
+        width: '90%',
+        maxWidth: '500px',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '1rem'
+        }}>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: '600' }}>
+            Generate Sample Data
+          </h2>
+          <button 
+            onClick={() => setShowSampleDataModal(false)}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '1.5rem',
+              cursor: 'pointer',
+              color: '#6b7280'
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Sample count slider */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label htmlFor="sample-count" style={{ 
+            display: 'block', 
+            marginBottom: '0.5rem', 
+            fontWeight: '500', 
+            color: '#4b5563' 
+          }}>
+            Number of Samples: {sampleCount}
+          </label>
+          <input
+            id="sample-count"
+            type="range"
+            min="10"
+            max="100"
+            step="5"
+            value={sampleCount}
+            onChange={(e) => setSampleCount(Number(e.target.value))}
+            style={{ width: '100%' }}
+          />
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            fontSize: '0.8rem', 
+            color: '#6b7280',
+            marginTop: '0.25rem'
+          }}>
+            <span>10 (Fewer points)</span>
+            <span>100 (More points)</span>
+          </div>
+        </div>
+
+        {/* Noise level slider */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label htmlFor="noise" style={{ 
+            display: 'block', 
+            marginBottom: '0.5rem', 
+            fontWeight: '500', 
+            color: '#4b5563' 
+          }}>
+            Noise Level: {sampleNoise.toFixed(1)}
+          </label>
+          <input
+            id="noise"
+            type="range"
+            min="1.0"
+            max="10.0"
+            step="0.5"
+            value={sampleNoise}
+            onChange={(e) => setSampleNoise(Number(e.target.value))}
+            style={{ width: '100%' }}
+          />
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            fontSize: '0.8rem', 
+            color: '#6b7280',
+            marginTop: '0.25rem'
+          }}>
+            <span>1.0 (Clean data)</span>
+            <span>10.0 (Noisy data)</span>
+          </div>
+        </div>
+
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'flex-end',
+          gap: '0.75rem',
+          marginTop: '1.5rem'
+        }}>
+          <button
+            onClick={() => setShowSampleDataModal(false)}
+            style={{
+              padding: '0.6rem 1.2rem',
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+              border: 'none',
+              borderRadius: '0.5rem',
+              cursor: 'pointer',
+              fontWeight: '500'
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={generateSampleDataWithOptions}
+            style={{
+              padding: '0.6rem 1.2rem',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              cursor: 'pointer',
+              fontWeight: '500'
+            }}
+          >
+            Generate Data
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <motion.div 
       className="model-page"
@@ -392,10 +559,10 @@ function LinReg() {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button 
                 className="sample-data-button" 
-                onClick={loadSampleData}
+                onClick={() => setShowSampleDataModal(true)} 
                 disabled={sampleLoading}
               >
-                {sampleLoading ? 'Loading...' : 'Load Sample Data'}
+                {sampleLoading ? 'Loading...' : 'Generate Sample Data'}
               </button>
               <button 
                 className="sample-data-button" 
@@ -761,6 +928,7 @@ function LinReg() {
           )}
         </div>
       </div>
+      {showSampleDataModal && <SampleDataModal />}
     </motion.div>
   );
 }
