@@ -1299,9 +1299,9 @@ function Reg() {
                 <input 
                   id="iterations-param"
                   type="range"
-                  min="100"
+                  min="1"
                   max="1000"
-                  step="100"
+                  step="1"
                   value={iterations}
                   onChange={(e) => setIterations(parseInt(e.target.value))}
                   disabled={algorithmStatus === "running"}
@@ -1314,7 +1314,7 @@ function Reg() {
                   color: '#6b7280',
                   marginTop: '0.5rem'
                 }}>
-                  <span>100 (Faster)</span>
+                  <span>1 (Faster)</span>
                   <span>1000 (More accurate)</span>
                 </div>
               </div>

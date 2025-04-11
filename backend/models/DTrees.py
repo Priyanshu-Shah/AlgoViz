@@ -356,7 +356,7 @@ def get_decision_path(tree_model, sample):
 
 def generate_tree_visualization(model, feature_names=None, class_names=None, regression=False):
     """
-    Generate a visualization of the decision tree with only leaf nodes colored
+    Generate a visualization of the decision tree with proper impurity values and only leaf nodes colored
     """
     import re  # Add the import at the function start
     import base64  # Make sure base64 is imported at the function level
@@ -371,7 +371,7 @@ def generate_tree_visualization(model, feature_names=None, class_names=None, reg
         # Export the decision tree to dot format with limited depth
         max_depth_to_show = min(5, model.get_depth())  # Limit visualization depth
         
-        # Export to dot format - initially without any filling
+        # Export to dot format with proper impurity values - Increase precision from 0 to 4
         export_graphviz(
             model, 
             out_file=dot_file_path,
@@ -382,7 +382,8 @@ def generate_tree_visualization(model, feature_names=None, class_names=None, reg
             special_characters=True,
             max_depth=max_depth_to_show,
             proportion=False,
-            precision=0
+            precision=4,  # Increased precision for impurity values
+            impurity=True  # Make sure impurity is shown
         )
         
         # Read the dot file content
@@ -412,6 +413,21 @@ def generate_tree_visualization(model, feature_names=None, class_names=None, reg
         dot_content = dot_content.replace('node [shape=box]', 
                                          'node [shape=box, style=filled, fillcolor="white", color="#dddddd"]')
         
+        # For non-leaf nodes, modify the label to remove class information but keep impurity
+        if not regression:
+            # Match pattern for non-leaf nodes
+            non_leaf_pattern = r'(\d+) \[label=<(.*?)class = ([^<>\]]+)(.*?)\]'
+            for node_id in non_leaf_nodes:
+                # Find all matches
+                for match in re.finditer(non_leaf_pattern, dot_content):
+                    matched_node_id = match.group(1)
+                    if matched_node_id == node_id:
+                        before_class = match.group(2)
+                        after_class = match.group(4)
+                        # Remove class information for non-leaf nodes
+                        new_label = f'{node_id} [label=<{before_class}{after_class}]'
+                        dot_content = dot_content.replace(match.group(0), new_label)
+        
         # Now color only the leaf nodes
         if not regression:
             # For classification trees, color leaf nodes by class
@@ -437,7 +453,7 @@ def generate_tree_visualization(model, feature_names=None, class_names=None, reg
                     replacement = f'{node_id} [style=filled, fillcolor="{color}", color="black", label='
                     dot_content = dot_content.replace(replace_pattern, replacement)
         else:
-            # For regression trees, apply gradient to leaf nodes
+            # For regression trees, apply gradient to leaf nodes only
             leaf_pattern = r'(\d+) \[label=<.*?value = \[([^\]]+)\].*?\]'
             for match in re.finditer(leaf_pattern, dot_content):
                 node_id = match.group(1)
@@ -573,7 +589,7 @@ def generate_decision_boundary(tree_model, X, y):
         n_classes = len(unique_classes)
         
         # Define colors for different classes (match frontend colors)
-        colors = ['#3B82F6', '#EF4444', '#22C55E', '#F59E0B', '#8B5CF6']
+        colors = ['#22C55E', '#3B82F6', '#EF4444', '#F59E0B', '#8B5CF6']#EF4444
         # If more classes than colors, use default colormap
         if n_classes <= len(colors):
             cmap_light = ListedColormap(colors[:n_classes])
@@ -730,7 +746,7 @@ def generate_sample_classification_data(dataset_type='blobs', n_samples=40, n_cl
     
     from sklearn.datasets import make_blobs, make_moons, make_circles
     
-    if dataset_type == 'moons':
+    if (dataset_type == 'moons'):
         # Generate two interleaving half circles
         X, y = make_moons(n_samples=n_samples*2, noise=variance*0.1, random_state=42)
         # Scale to -8 to 8 range
@@ -738,7 +754,7 @@ def generate_sample_classification_data(dataset_type='blobs', n_samples=40, n_cl
         # Convert to strings to match expected format
         y = [str(int(i)) for i in y]
         
-    elif dataset_type == 'circles':
+    elif (dataset_type == 'circles'):
         # Generate concentric circles
         X, y = make_circles(n_samples=n_samples*2, noise=variance*0.1, factor=0.5, random_state=42)
         # Scale to -8 to 8 range
