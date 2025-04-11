@@ -9,8 +9,10 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import PolynomialFeatures
 import io
 import base64
+import traceback  # Add this line to import traceback module
 
-def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6, polynomial_degree=1):
+def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6, polynomial_degree=1, 
+                   record_steps=False, step_interval=10):
     """
     Implements gradient descent for polynomial regression with safeguards for high learning rates
     
@@ -21,26 +23,36 @@ def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6,
     n_iterations (int): Maximum number of iterations
     tolerance (float): Convergence threshold for stopping criterion
     polynomial_degree (int): Degree of polynomial to adjust learning rate
+    record_steps (bool): Whether to record theta at intervals for visualization
+    step_interval (int): Number of iterations between recording history
     
     Returns:
-    tuple: (coefficients, intercept, cost_history, actual_iterations)
+    tuple: (coefficients, intercept, cost_history, actual_iterations, theta_history)
     """
     # Add a column of ones to X for the intercept term
     X_b = np.c_[np.ones((X.shape[0], 1)), X]
     
-    # Scale learning rate based on polynomial degree
-    # As polynomial degree increases, we need to reduce learning rate
-    scaled_learning_rate = learning_rate / (polynomial_degree ** 1.5) if polynomial_degree > 1 else learning_rate
+    # Modified learning rate scaling - better balance for higher degrees
+    # Use a less aggressive scaling for polynomial degree
+    if polynomial_degree <= 3:
+        scaled_learning_rate = learning_rate
+    elif polynomial_degree <= 5:
+        scaled_learning_rate = learning_rate / (1 + 0.2 * (polynomial_degree - 3))
+    else:
+        scaled_learning_rate = learning_rate / (1 + 0.4 * (polynomial_degree - 5))
+        
     print(f"Original learning rate: {learning_rate}, Scaled learning rate: {scaled_learning_rate}")
     
-    # Initialize parameters (theta)
-    theta = np.zeros(X_b.shape[1])  # Start with zeros instead of random values
+    # Initialize parameters (theta) with small random values to help break symmetry
+    # This helps with fitting certain patterns like sinusoidal curves
+    theta = np.random.randn(X_b.shape[1]) * 0.01
     
-    # Initialize cost history
+    # Initialize cost history and theta history
     cost_history = []
+    theta_history = [] if record_steps else None
     
     # Feature scaling for better convergence
-    # Only scale the features, not the intercept column
+    # Scale both X and y for better numerical stability
     if X_b.shape[1] > 1:
         feature_means = np.mean(X_b[:, 1:], axis=0)
         feature_stds = np.std(X_b[:, 1:], axis=0)
@@ -50,10 +62,21 @@ def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6,
         # Apply scaling to features (not to the intercept column)
         X_b_scaled = X_b.copy()
         X_b_scaled[:, 1:] = (X_b[:, 1:] - feature_means) / feature_stds
+        
+        # For sinusoidal-like data (which might have higher magnitude),
+        # we also normalize the target values
+        y_mean = np.mean(y)
+        y_std = np.std(y) if np.std(y) > 0 else 1
+        y_scaled = (y - y_mean) / y_std
     else:
         X_b_scaled = X_b
+        feature_means = np.array([])
+        feature_stds = np.array([])
+        y_scaled = y
+        y_mean = 0
+        y_std = 1
     
-    # Gradient descent
+    # Rest of the function remains the same, but we use y_scaled instead of y
     actual_iterations = 0
     prev_cost = float('inf')
     
@@ -63,8 +86,8 @@ def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6,
         # Calculate predictions
         y_pred = X_b_scaled.dot(theta)
         
-        # Calculate error
-        error = y_pred - y
+        # Calculate error using scaled y
+        error = y_pred - y_scaled
         
         # Calculate cost (MSE)
         cost = np.mean(error**2)
@@ -79,24 +102,46 @@ def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6,
             else:
                 # Try reducing learning rate and restarting
                 return gradient_descent(X, y, learning_rate=learning_rate*0.1, n_iterations=n_iterations, 
-                                       tolerance=tolerance, polynomial_degree=polynomial_degree)
+                                      tolerance=tolerance, polynomial_degree=polynomial_degree,
+                                      record_steps=record_steps, step_interval=step_interval)
         
         # Check for divergence (cost increasing significantly)
         if i > 0 and cost > prev_cost * 1.5 and i > 5:
             print(f"Warning: Cost increasing at iteration {i}. Reducing learning rate.")
             # Try again with a smaller learning rate
             return gradient_descent(X, y, learning_rate=scaled_learning_rate*0.1, n_iterations=n_iterations, 
-                                   tolerance=tolerance, polynomial_degree=polynomial_degree)
+                                  tolerance=tolerance, polynomial_degree=polynomial_degree,
+                                  record_steps=record_steps, step_interval=step_interval)
             
         cost_history.append(float(cost))
         prev_cost = cost
         
+        # Record theta history at specified intervals if requested
+        if record_steps and i % step_interval == 0:
+            # Convert theta to original scale before recording
+            if X_b.shape[1] > 1:
+                # Extract intercept and coefficients
+                intercept = theta[0] * y_std + y_mean
+                coefficients = theta[1:] / feature_stds * y_std
+                
+                # Adjust intercept to account for mean-centered features
+                intercept = intercept - np.sum(coefficients * feature_means)
+                
+                # Combine back for history recording
+                orig_theta = np.concatenate([[intercept], coefficients])
+            else:
+                orig_theta = theta.copy() * y_std + y_mean
+                
+            theta_history.append(orig_theta)
+        
         # Calculate gradients
         gradients = 2/X_b_scaled.shape[0] * X_b_scaled.T.dot(error)
         
-        # Clip gradients to prevent extreme values
-        max_grad = 10.0 / (polynomial_degree if polynomial_degree > 0 else 1)
-        gradients = np.clip(gradients, -max_grad, max_grad)
+        # Adaptive gradient clipping for higher degree polynomials
+        if polynomial_degree > 3:
+            # More aggressive clipping for higher degrees
+            max_grad = 5.0 / polynomial_degree
+            gradients = np.clip(gradients, -max_grad, max_grad)
         
         # Update parameters with adaptive learning rate
         theta = theta - scaled_learning_rate * gradients
@@ -104,36 +149,36 @@ def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6,
         # Check for convergence
         if i > 0 and np.abs(cost_history[i] - cost_history[i-1]) < tolerance:
             print(f"Converged after {i+1} iterations")
+            
+            # Record final theta if we're tracking history
+            if record_steps and (i % step_interval != 0):
+                if X_b.shape[1] > 1:
+                    intercept = theta[0] * y_std + y_mean
+                    coefficients = theta[1:] / feature_stds * y_std
+                    intercept = intercept - np.sum(coefficients * feature_means)
+                    orig_theta = np.concatenate([[intercept], coefficients])
+                else:
+                    orig_theta = theta.copy() * y_std + y_mean
+                theta_history.append(orig_theta)
+                
             break
     
-    # Extract intercept and coefficients
-    intercept = theta[0]
-    
-    # If we scaled the features, we need to transform coefficients back
+    # Extract intercept and coefficients and transform back to original scale
     if X_b.shape[1] > 1:
         # For each coefficient, apply the inverse scaling
-        coefficients = theta[1:] / feature_stds
+        coefficients = theta[1:] / feature_stds * y_std
         
-        # Adjust intercept to account for mean-centered features
-        intercept = intercept - np.sum(coefficients * feature_means)
+        # Adjust intercept to account for mean-centered features and y scaling
+        intercept = theta[0] * y_std + y_mean - np.sum(coefficients * feature_means)
     else:
-        coefficients = theta[1:]
+        coefficients = theta[1:] * y_std
+        intercept = theta[0] * y_std + y_mean
     
-    return coefficients, intercept, cost_history, actual_iterations
+    return coefficients, intercept, cost_history, actual_iterations, theta_history
 
-def run_polynomial_regression(data, degree=1, alpha=0.01, iterations=100, random_state=42):
+def run_polynomial_regression(data, degree=1, alpha=0.01, iterations=100, random_state=42, record_steps=False, step_interval=10):
     """
     Runs polynomial regression of specified degree on the provided data
-    
-    Parameters:
-    data (dict): Dictionary with 'X' and 'y' keys containing the data
-    degree (int): Degree of the polynomial
-    alpha (float): Learning rate for gradient descent
-    iterations (int): Maximum number of iterations
-    random_state (int): Random seed for reproducibility
-    
-    Returns:
-    dict: Results of the regression including coefficients, metrics, and visualizations
     """
     try:
         # Set random seed
@@ -142,6 +187,7 @@ def run_polynomial_regression(data, degree=1, alpha=0.01, iterations=100, random
         # Debug information
         print(f"Received data: X={data['X'][:5]}... (length: {len(data['X'])}), y={data['y'][:5]}... (length: {len(data['y'])})")
         print(f"Polynomial degree: {degree}, Learning rate (alpha): {alpha}, Max iterations: {iterations}")
+        print(f"Record steps: {record_steps}, Step interval: {step_interval}")
         
         # Convert to numpy arrays with validation
         try:
@@ -172,130 +218,140 @@ def run_polynomial_regression(data, degree=1, alpha=0.01, iterations=100, random
         poly = PolynomialFeatures(degree=degree, include_bias=False)
         X_poly = poly.fit_transform(X)
         
-        # Train the model using gradient descent
-        coefficients, intercept, cost_history, actual_iterations = gradient_descent(
-            X_poly, y, learning_rate=alpha, n_iterations=iterations + 1, polynomial_degree=degree
+        # Always enable recording steps 
+        record_steps = True
+        # Use step interval 1 for every iteration, will adjust later if needed
+        effective_step_interval = 1
+        
+        # Train the model using gradient descent with history tracking
+        coefficients, intercept, cost_history, actual_iterations, theta_history = gradient_descent(
+            X_poly, y, learning_rate=alpha, n_iterations=iterations + 1, polynomial_degree=degree,
+            record_steps=record_steps, step_interval=effective_step_interval
         )
         
         # Create model predictions for original data points
         X_poly_pred = poly.transform(X)
-
-        # Approach 1: Use np.dot for matrix multiplication
         y_pred = intercept + np.dot(X_poly_pred, coefficients)
-
-        # Ensure y_pred is a 1D array with same shape as y
         y_pred = np.array(y_pred).flatten()
-
+        
         # Calculate metrics
         mse = float(mean_squared_error(y, y_pred))
-        r2 = float(r2_score(y, y_pred))  # Use sklearn's r2_score for reliability
+        r2 = float(r2_score(y, y_pred))
         
-        # Generate visualization
-        plt.figure(figsize=(10, 6))
+        # Generate visualization of cost history
+        cost_history_plot = create_cost_history_plot(cost_history)
         
-        # Plot data points
-        plt.scatter(X, y, color='blue', label='Data points')
+        # Create iteration history for frontend visualization
+        iteration_history = []
         
-        # Update the curve calculation for visualization
-
-        # Generate smooth curve for polynomial regression
-        X_line = np.linspace(X.min(), X.max(), 100).reshape(-1, 1)
-        X_line_poly = poly.transform(X_line)
-        y_line = intercept + np.dot(X_line_poly, coefficients)
+        # Debug the theta history
+        print(f"Theta history length: {len(theta_history) if theta_history else 0}")
+        print(f"Actual iterations completed: {actual_iterations}")
         
-        # Plot regression line/curve
-        plt.plot(X_line, y_line, color='red', linewidth=2, label=f'Degree {degree} polynomial')
-        
-        # Add title and labels
-        plt.title(f"Polynomial Regression (Degree {degree}, α={alpha:.4f}, iterations={actual_iterations})")
-        plt.xlabel('X')
-        plt.ylabel('y')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        
-        # Save plot to base64 string
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=100)
-        buf.seek(0)
-        plot_data = base64.b64encode(buf.read()).decode('utf-8')
-        plt.close()
-        
-        # Generate cost history plot
-        plt.figure(figsize=(10, 6))
-        plt.plot(range(1, len(cost_history) + 1), cost_history, marker='o', markersize=3, color='blue')
-        plt.title('Cost vs Iterations')
-        plt.xlabel('Iterations')
-        plt.ylabel('Mean Squared Error')
-        plt.grid(True, alpha=0.3)
-        
-        # Add logarithmic scale if there's significant change in cost
-        if len(cost_history) > 1 and cost_history[0] / max(cost_history[-1], 1e-10) > 10:
-            plt.yscale('log')
+        if theta_history:
+            # Determine if we need to subsample for the front-end
+            # If there are more than 100 iterations, we'll subsample
+            if len(theta_history) > 100:
+                # Calculate step interval to get approximately 100 points
+                front_end_step = max(1, len(theta_history) // 100)
+                print(f"Many iterations ({len(theta_history)}), using step interval of {front_end_step} for frontend")
+                selected_indices = range(0, len(theta_history), front_end_step)
+                selected_theta_history = [theta_history[i] for i in selected_indices]
+            else:
+                # If fewer than 100 iterations, use all of them
+                print(f"Few iterations ({len(theta_history)}), using all for frontend")
+                selected_indices = range(len(theta_history))
+                selected_theta_history = theta_history
             
-        # Save cost history plot to base64 string
-        cost_buf = io.BytesIO()
-        plt.savefig(cost_buf, format='png', dpi=100)
-        cost_buf.seek(0)
-        cost_plot_data = base64.b64encode(cost_buf.read()).decode('utf-8')
-        plt.close()
+            # Create the iteration history for each selected theta
+            for i, idx in enumerate(selected_indices):
+                theta = theta_history[idx]
+                iter_intercept = theta[0]
+                iter_coeffs = theta[1:]
+                
+                # Use the actual iteration number
+                iter_step = idx
+                iter_cost = cost_history[iter_step] if iter_step < len(cost_history) else cost_history[-1]
+                
+                iteration_history.append({
+                    "iteration": iter_step,
+                    "coefficients": iter_coeffs.tolist(),
+                    "intercept": float(iter_intercept),
+                    "cost": float(iter_cost),
+                    "degree": int(degree)
+                })
+            
+            print(f"Created iteration history with {len(iteration_history)} entries")
+        else:
+            print("Warning: No theta history was recorded, iteration playback will not be available.")
         
-        # Create polynomial equation string
-        equation = f'y = {intercept:.4f}'
-        for i, coef in enumerate(coefficients):
-            power = i + 1
-            sign = '+' if coef >= 0 else '-'
-            equation += f' {sign} {abs(coef):.4f}x^{power}'
-        
-        # Debug info
-        print(f"Model trained successfully: coefficients={coefficients}, intercept={intercept}")
-        print(f"Metrics: R2={r2}, MSE={mse}")
-        print(f"Iterations used: {actual_iterations} out of {iterations} max")
-        
-        # Return results with explicit type conversion for all values
-        result = {
-            'coefficients': [float(c) for c in coefficients],
-            'intercept': float(intercept),
-            'degree': int(degree),
-            'mse': float(mse),
-            'r2': float(r2),
-            'alpha': float(alpha),
-            'iterations': int(actual_iterations),
-            'max_iterations': int(iterations),
-            'final_cost': float(cost_history[-1]) if cost_history else 0.0,
-            'plot': plot_data,
-            'cost_history': [float(c) for c in cost_history],
-            'cost_history_plot': cost_plot_data,
-            'equation': equation
+        # Return results
+        results = {
+            "coefficients": coefficients.tolist(),
+            "intercept": float(intercept),
+            "mse": mse,
+            "r2": r2,
+            "cost_history": cost_history,
+            "cost_history_plot": cost_history_plot,
+            "degree": int(degree),
+            "alpha": float(alpha),
+            "iterations": int(actual_iterations),
+            "iteration_history": iteration_history
         }
         
-        # Verify the result structure before returning
-        print(f"Returning result keys: {list(result.keys())}")
-        return result
+        return results
         
     except Exception as e:
-        # Provide detailed error information
-        import traceback
-        error_traceback = traceback.format_exc()
         print(f"Error in Polynomial Regression model: {str(e)}")
-        print(f"Traceback: {error_traceback}")
+        print(f"Traceback: {traceback.format_exc()}")
         
-        # Provide specific diagnosis for common issues
-        error_diagnosis = "Unknown error"
-        if "shape" in str(e).lower():
-            error_diagnosis = "Data shape issue: Make sure X and y have compatible dimensions"
-        elif "nan" in str(e).lower() or "infinity" in str(e).lower():
-            error_diagnosis = "Data contains NaN or infinite values"
-        elif "conversion" in str(e).lower() or "convert" in str(e).lower():
-            error_diagnosis = "Data type conversion error: All values must be numeric"
+        # Return error message
+        error_msg = f"{str(e)}"
+        if "learning rate" in str(e).lower() or "diverg" in str(e).lower():
+            error_msg = f"Learning rate too high: {str(e)}"
+        elif "nan" in str(e).lower() or "inf" in str(e).lower():
+            error_msg = f"Numerical error (try reducing learning rate): {str(e)}"
+        else:
+            error_msg = f"{str(e)} - Unknown error"
         
-        return {
-            'error': f"{str(e)} - {error_diagnosis}",
-            'traceback': error_traceback,
-            'data_sample': {
-                'X_sample': str(data.get('X', [])[:5]) if isinstance(data.get('X', None), list) else "Invalid X data",
-                'y_sample': str(data.get('y', [])[:5]) if isinstance(data.get('y', None), list) else "Invalid y data"
-            }
-        }
+        raise ValueError(f"Error in polynomial regression: {error_msg}")
+
+# Add this function before run_polynomial_regression
+def create_cost_history_plot(cost_history):
+    """
+    Creates a visualization of the cost history during training
+    
+    Parameters:
+    cost_history (list): List of cost values at each iteration
+    
+    Returns:
+    str: Base64 encoded PNG image of the plot
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Plot cost history
+    ax.plot(range(len(cost_history)), cost_history, color='blue', linewidth=2)
+    
+    # Add labels and title
+    ax.set_xlabel('Iteration', fontsize=12, labelpad=10)
+    ax.set_ylabel('Mean Squared Error', fontsize=12, labelpad=10)
+    ax.set_title('Cost History during Training', fontsize=14, pad=20)
+    ax.grid(alpha=0.3)
+    
+    # Use log scale for y-axis if there's a large range in cost values
+    if max(cost_history) > 10 * min(cost_history):
+        ax.set_yscale('log')
+    
+    plt.tight_layout(pad=2.0)
+    
+    # Convert plot to base64 string
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png', dpi=100)
+    plt.close(fig)
+    buffer.seek(0)
+    
+    plot_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+    return plot_base64
 
 def create_regression_plot(X, y, coefficients, intercept, degree):
     """

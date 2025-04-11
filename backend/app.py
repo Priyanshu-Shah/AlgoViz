@@ -101,16 +101,6 @@ def svm():
         
         return jsonify({"error": str(e), "traceback": error_details}), 500
 
-@app.route('/api/linear-regression/sample', methods=['GET'])
-def linear_regression_sample():
-    try:
-        n_samples = request.args.get('n_samples', default=30, type=int)
-        noise = request.args.get('noise', default=5.0, type=float)
-        data = generate_linear_data(n_samples=n_samples, noise=noise)
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
 @app.route('/api/svm/sample', methods=['GET'])
 def svm_sample():
     try:
@@ -191,6 +181,8 @@ def knn_predict_point():
         print(f"Exception in KNN predict point endpoint: {str(e)}")
         print(f"Traceback: {error_traceback}")
         return jsonify({"error": str(e), "traceback": error_traceback}), 500
+
+
 
 @app.route('/api/knn-decision-boundary', methods=['POST'])
 def knn_decision_boundary():
@@ -1393,42 +1385,46 @@ def regression():
             
         return jsonify(error_response), 500
 
-# Also add a sample data endpoint for polynomial data
-@app.route('/api/regression/sample', methods=['GET'])
-def regression_sample_data():
+@app.route('/api/regression/sample_data', methods=['POST'])
+def generate_regression_sample_data():
+    """Generate sample data for polynomial regression visualization"""
     try:
-        count = int(request.args.get('count', 30))
-        noise = float(request.args.get('noise', 5.0))
-        degree = int(request.args.get('degree', 2))
+        # Parse request parameters
+        data = request.json
+        dataset_type = data.get('dataset_type', 'linear')
+        n_samples = min(int(data.get('n_samples', 30)), 100)  # Limit to 100 points
+        noise_level = float(data.get('noise_level', 0.5))
         
-        # Generate sample data with polynomial pattern
-        x = np.linspace(-8, 8, count).tolist()
+        # Generate X values (evenly distributed in range)
+        X = np.linspace(-8, 8, n_samples).reshape(-1, 1)
         
-        # Create true polynomial function y = x^2 - 2x + 3 + noise
-        np.random.seed(42)  # For reproducibility
+        # Generate y values based on dataset type
+        if dataset_type == 'linear':
+            # y = 2x + 1 + noise
+            y = 2 * X.flatten() + 1 + np.random.normal(0, noise_level, n_samples)
+            
+        elif dataset_type == 'quadratic':
+            # y = 0.5x² - 2x + 1 + noise
+            y = 0.5 * X.flatten()**2 - 2 * X.flatten() +  + np.random.normal(0, noise_level, n_samples)
+            
+        elif dataset_type == 'sinusoidal':
+            # y = 3sin(x) + noise
+              y = 3 * np.sin(0.7 * X.flatten()) + np.random.normal(0, noise_level, n_samples)
+            
+        else:
+            return jsonify({"error": f"Unknown dataset type: {dataset_type}"}), 400
         
-        # Generate coefficients for the polynomial of specified degree
-        coefficients = np.random.uniform(-2, 2, degree)
-        intercept = np.random.uniform(-5, 5)
-        
-        # Generate y values using the polynomial
-        x_array = np.array(x)
-        y_true = np.zeros_like(x_array)
-        for i, coef in enumerate(coefficients):
-            y_true += coef * np.power(x_array, i+1)
-        y_true += intercept
-        
-        # Add noise
-        y = (y_true + np.random.normal(0, noise, size=len(x))).tolist()
-        
+        # Return data as JSON
         return jsonify({
-            "X": x,
-            "y": y,
-            "degree": degree,
-            "noise": noise
+            "X": X.flatten().tolist(),
+            "y": y.tolist(),
+            "dataset_type": dataset_type,
+            "noise_level": noise_level
         })
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Error generating sample data: {str(e)}")
+        return jsonify({"error": f"Error generating sample data: {str(e)}"}), 500
 
 if __name__ == '__main__':
     print(" * ML Visualizer Backend Starting...")

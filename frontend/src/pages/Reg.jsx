@@ -1,8 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { runPolynomialRegression, getPolynomialRegressionSampleData, checkHealth } from '../api';
+import axios from 'axios';
 import './ModelPage.css';
 
 function Reg() {
@@ -13,31 +13,43 @@ function Reg() {
   const [error, setError] = useState(null);
   const [backendStatus, setBackendStatus] = useState("checking");
   const [sampleLoading, setSampleLoading] = useState(false);
+  
+  // Algorithm parameters
   const [alpha, setAlpha] = useState(0.01);
   const [iterations, setIterations] = useState(100);
-  const [degree, setDegree] = useState(1);  // New state for polynomial degree
+  const [degree, setDegree] = useState(1);
   const [isHighAlpha, setIsHighAlpha] = useState(false);
-  const [showSampleDataModal, setShowSampleDataModal] = useState(false);
-  const [sampleCount, setSampleCount] = useState(30);
-  const [sampleNoise, setSampleNoise] = useState(5.0);
   
   // Canvas ref and state for interactive plotting
   const canvasRef = useRef(null);
-  const [canvasDimensions] = useState({ width: 550, height: 400 });
+  const canvasWidth = 600;
+  const canvasHeight = 600;
   
-  // Updated scale to center the graph at the origin and set axes from -8 to 8
-  const scale = {
+  // Scale for visualization - consistent with DBScan
+  const scale = useMemo(() => ({
     x: { min: -8, max: 8 },
     y: { min: -8, max: 8 }
-  };
+  }), []);
+  
+  // Algorithm visualization states (similar to DBScan)
+  const [algorithmStatus, setAlgorithmStatus] = useState("idle"); // "idle", "running", "completed"
+  const [iterations_history, setIterationsHistory] = useState([]);
+  const [currentIteration, setCurrentIteration] = useState(0);
+  const [isAutoAdvancing, setIsAutoAdvancing] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(500); // milliseconds between iterations
+  
+  // Sample data modal
+  const [showSampleDataModal, setShowSampleDataModal] = useState(false);
+  const [sampleCount, setSampleCount] = useState(30);
+  const [sampleNoise, setSampleNoise] = useState(5.0);
+  const [sampleType, setSampleType] = useState('linear'); // linear, quadratic, sinusoidal
   
   // Check backend health on component mount
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const health = await checkHealth();
-        console.log("Backend health response:", health);
-        setBackendStatus(health.status === "healthy" ? "connected" : "disconnected");
+        const response = await axios.get('http://localhost:5000/api/health');
+        setBackendStatus(response.data.status === "healthy" ? "connected" : "disconnected");
       } catch (err) {
         console.error("Backend health check failed:", err);
         setBackendStatus("disconnected");
@@ -53,6 +65,25 @@ function Reg() {
     setIsHighAlpha(alpha > 0.1);
   }, [alpha]);
   
+  // Auto-advance through iterations (like in DBScan)
+  useEffect(() => {
+    let timer;
+    
+    if (isAutoAdvancing && algorithmStatus === "completed") {
+      if (currentIteration < iterations_history.length - 1) {
+        timer = setTimeout(() => {
+          setCurrentIteration(prev => prev + 1);
+        }, playbackSpeed);
+      } else {
+        setIsAutoAdvancing(false);
+      }
+    }
+    
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [currentIteration, iterations_history, isAutoAdvancing, playbackSpeed, algorithmStatus]);
+  
   // Convert data pairs to points - extracted for reuse
   const getValidPoints = () => {
     return dataPairs
@@ -63,10 +94,147 @@ function Reg() {
       }));
   };
   
-  // Update drawRegressionLine function to handle polynomial curves
-  const drawRegressionLine = (ctx, canvas, coefficients, intercept, degree) => {
-    // Don't try to draw a curve if we don't have valid coefficients
-    if (!coefficients || !intercept) return;
+  // Canvas drawing effect - updated to match DBScan style
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#f9f9f9";
+    ctx.fillRect(0, 0, width, height);
+    
+    // Draw grid
+    drawGrid(ctx, width, height);
+    
+    // Get valid points
+    const points = getValidPoints();
+    
+    // Draw data points
+    drawDataPoints(ctx, points, width, height);
+    
+    // Draw regression curve if results exist
+    if (algorithmStatus === "idle") {
+      if (results && results.coefficients && results.intercept !== undefined) {
+        drawRegressionLine(ctx, results.coefficients, results.intercept, results.degree || 1, width, height);
+      }
+    } else if (iterations_history.length > 0 && currentIteration < iterations_history.length) {
+      // Draw based on the current iteration
+      const iteration = iterations_history[currentIteration];
+      drawRegressionLine(ctx, iteration.coefficients, iteration.intercept, iteration.degree, width, height);
+      
+      // Add iteration info overlay
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.font = 'bold 14px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Iteration: ${currentIteration + 1} / ${iterations_history.length}`, 10, 20);
+      ctx.font = 'normal 12px Inter, sans-serif';
+      ctx.fillText(`Cost: ${iteration.cost.toFixed(6)}`, 10, 40);
+    }
+    
+    // Add subtle text indicator if no data
+    if (points.length === 0) {
+      ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+      ctx.font = '16px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Click to add data points', width / 2, height / 2);
+    }
+  }, [dataPairs, results, algorithmStatus, currentIteration, iterations_history]);
+
+  // Draw grid function - match DBScan style
+  const drawGrid = (ctx, width, height) => {
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 0.5;
+    
+    // Calculate step size for grid lines (16 divisions for -8 to 8 range)
+    const stepX = width / 16;
+    const stepY = height / 16;
+    
+    // Draw horizontal grid lines
+    for (let i = 0; i <= 16; i++) {
+      const y = i * stepY;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    
+    // Draw vertical grid lines
+    for (let i = 0; i <= 16; i++) {
+      const x = i * stepX;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    
+    // Draw X and Y axes with dotted lines
+    ctx.strokeStyle = '#9ca3af'; // Medium gray color
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]); // Dotted line pattern
+    
+    // X-axis (horizontal line at y=0)
+    const yAxisPos = height / 2; // y=0 position
+    ctx.beginPath();
+    ctx.moveTo(0, yAxisPos);
+    ctx.lineTo(width, yAxisPos);
+    ctx.stroke();
+    
+    // Y-axis (vertical line at x=0)
+    const xAxisPos = width / 2; // x=0 position
+    ctx.beginPath();
+    ctx.moveTo(xAxisPos, 0);
+    ctx.lineTo(xAxisPos, height);
+    ctx.stroke();
+    
+    // Reset line dash
+    ctx.setLineDash([]);
+    
+    // Draw axes labels
+    ctx.fillStyle = '#4b5563';
+    ctx.font = '12px Inter, sans-serif';
+    
+    // X-axis labels
+    for (let i = 0; i <= 16; i += 2) {
+      const x = i * stepX;
+      const value = scale.x.min + (i / 16) * (scale.x.max - scale.x.min);
+      ctx.fillText(value.toFixed(0), x - 8, height - 5);
+    }
+    
+    // Y-axis labels
+    for (let i = 0; i <= 16; i += 2) {
+      const y = i * stepY;
+      const value = scale.y.max - (i / 16) * (scale.y.max - scale.y.min);
+      ctx.fillText(value.toFixed(0), 5, y + 4);
+    }
+  };
+
+  // Helper function to draw points
+  const drawDataPoints = (ctx, points, width, height) => {
+    if (!points || points.length === 0) return;
+    
+    points.forEach(point => {
+      // Convert data coordinates to screen coordinates
+      const x = ((point.x - scale.x.min) / (scale.x.max - scale.x.min)) * width;
+      const y = ((scale.y.max - point.y) / (scale.y.max - scale.y.min)) * height;
+      
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.7)';
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+  };
+
+  // Updated drawRegressionLine function to match DBScan style
+  const drawRegressionLine = (ctx, coefficients, intercept, degree, width, height) => {
+    if (!coefficients || intercept === undefined) return;
     
     // Generate points for the curve
     const numPoints = 100;
@@ -85,8 +253,8 @@ function Reg() {
       }
       
       // Convert to screen coordinates
-      const screenX = ((x - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
-      const screenY = canvas.height - ((y - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+      const screenX = ((x - scale.x.min) / (scale.x.max - scale.x.min)) * width;
+      const screenY = height - ((y - scale.y.min) / (scale.y.max - scale.y.min)) * height;
       
       points.push({ x: screenX, y: screenY });
     }
@@ -104,128 +272,33 @@ function Reg() {
     ctx.stroke();
   };
 
-  // Update useEffect for drawing canvas
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw grid and axes
-    drawGrid(ctx, canvas);
-    
-    // Get valid points
-    const points = getValidPoints();
-    
-    // Draw points
-    drawPoints(ctx, canvas, points);
-    
-    // Draw regression curve if results exist
-    if (results && results.coefficients && results.intercept !== undefined) {
-      drawRegressionLine(ctx, canvas, results.coefficients, results.intercept, results.degree || 1);
-    }
-    
-    // Debug console logs
-    console.log("Canvas redrawn with:", {
-      points: points.length,
-      results: results ? "yes" : "no"
-    });
-    
-  }, [dataPairs, results]);
-
-  // Updated drawGrid function to reflect the new scale
-  const drawGrid = (ctx, canvas) => {
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 0.5;
-
-    // Draw horizontal grid lines
-    for (let i = scale.y.min; i <= scale.y.max; i++) {
-      const y = canvas.height - ((i - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-      ctx.stroke();
-    }
-
-    // Draw vertical grid lines
-    for (let i = scale.x.min; i <= scale.x.max; i++) {
-      const x = ((i - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
-    }
-
-    // Draw axes
-    ctx.strokeStyle = '#6b7280';
-    ctx.lineWidth = 1;
-
-    // X-axis
-    const xAxisY = canvas.height - ((0 - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-    ctx.beginPath();
-    ctx.moveTo(0, xAxisY);
-    ctx.lineTo(canvas.width, xAxisY);
-    ctx.stroke();
-
-    // Y-axis
-    const yAxisX = ((0 - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
-    ctx.beginPath();
-    ctx.moveTo(yAxisX, 0);
-    ctx.lineTo(yAxisX, canvas.height);
-    ctx.stroke();
-
-    // Draw axes labels
-    ctx.fillStyle = '#4b5563';
-    ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
-
-    // X-axis labels
-    for (let i = scale.x.min; i <= scale.x.max; i += 2) {
-      const x = ((i - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
-      ctx.fillText(i.toString(), x - 10, xAxisY + 15);
-    }
-
-    // Y-axis labels
-    for (let i = scale.y.min; i <= scale.y.max; i += 2) {
-      const y = canvas.height - ((i - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-      ctx.fillText(i.toString(), yAxisX + 5, y + 4);
-    }
-  };
-
-  // Helper function to draw points
-  const drawPoints = (ctx, canvas, points) => {
-    if (!points || points.length === 0) return;
-    
-    points.forEach(point => {
-      // Convert data coordinates to screen coordinates
-      const x = ((point.x - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
-      const y = canvas.height - ((point.y - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-      
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.7)';
-      ctx.fill();
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    });
-  };
-
   // Convert screen coordinates to data coordinates
   const screenToData = (x, y) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     
-    const dataX = scale.x.min + (x / canvas.width) * (scale.x.max - scale.x.min);
-    const dataY = scale.y.min + ((canvas.height - y) / canvas.height) * (scale.y.max - scale.y.min);
+    // Calculate with scale factor for high DPI displays
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    // Adjust the x and y by the scale factor
+    const adjustedX = x * scaleX;
+    const adjustedY = y * scaleY;
+    
+    const dataX = scale.x.min + (adjustedX / canvas.width) * (scale.x.max - scale.x.min);
+    const dataY = scale.y.max - (adjustedY / canvas.height) * (scale.y.max - scale.y.min);
     
     return { x: dataX, y: dataY };
   };
 
   // Handle canvas click to add point
   const handleCanvasClick = (e) => {
+    // Allow adding points even if algorithm is completed - only block during "running" state
+    if (algorithmStatus === "running") {
+      return;
+    }
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -294,36 +367,55 @@ function Reg() {
     newPairs[index][field] = value;
     setDataPairs(newPairs);
   };
-
-  const generateSampleDataWithOptions = async () => {
-    setSampleLoading(true);
-    setShowSampleDataModal(false);
-    setError(null);
-
+  
+  // Sample data generation
+  const loadSampleData = () => {
+    setShowSampleDataModal(true);
+  };
+  
+  const generateSampleData = async () => {
     try {
-      const sampleData = await getPolynomialRegressionSampleData(sampleCount, sampleNoise, degree);
-
-      // Convert sample data into pairs
-      const pairs = sampleData.X.map((x, index) => ({
-        x: x.toString(),
-        y: sampleData.y[index].toString()
-      }));
-
-      setDataPairs(pairs);
+      setLoading(true);
+      setError(null);
+      
+      const response = await axios.post('http://localhost:5000/api/regression/sample_data', {
+        dataset_type: sampleType,
+        n_samples: sampleCount,
+        noise_level: sampleNoise / 10 // Scale down to match backend expectation
+      });
+      
+      if (response.data.X && response.data.y) {
+        // Convert sample data into pairs
+        const pairs = response.data.X.map((x, index) => ({
+          x: x.toString(),
+          y: response.data.y[index].toString()
+        }));
+        
+        setDataPairs(pairs);
+      } else {
+        setError("Failed to generate sample data: No data points received");
+      }
+      
+      setShowSampleDataModal(false);
     } catch (err) {
-      setError('Failed to load sample data. Please try again.');
-      console.error(err);
+      console.error("Error generating sample data:", err);
+      setError(`Failed to generate sample data: ${err.message || "Unknown error"}`);
     } finally {
-      setSampleLoading(false);
+      setLoading(false);
     }
   };
 
   const resetData = () => {
     setDataPairs([{ x: '', y: '' }]);
     setResults(null);
+    setIterationsHistory([]);
+    setCurrentIteration(0);
+    setAlgorithmStatus("idle");
+    setIsAutoAdvancing(false);
     setError(null);
   };
 
+  // Update the algorithm status handling to allow re-running with different parameters
   const handleRunModel = async () => {
     // Filter out empty pairs
     const validPairs = getValidPoints();
@@ -336,29 +428,44 @@ function Reg() {
 
     setError(null);
     setLoading(true);
-    setResults(null); // Reset results before new request
+    // Don't reset results before new request - this allows seeing previous results during loading
+    setAlgorithmStatus("running");
 
     try {
       // Prepare data for the API
+      const targetRecordPoints = 100;
+      const step_interval = iterations > targetRecordPoints ? 
+        Math.max(1, Math.floor(iterations / targetRecordPoints)) : 1;
       const apiData = {
         X: validPairs.map(pair => pair.x),
         y: validPairs.map(pair => pair.y),
         alpha: alpha,
         iterations: iterations,
-        degree: degree  // Add polynomial degree
+        degree: degree,
+        record_steps: true, // Request iteration history
+        step_interval: step_interval
       };
 
       console.log('Calling API endpoint with data:', apiData);
-      const response = await runPolynomialRegression(apiData);
+      const response = await axios.post('http://localhost:5000/api/regression', apiData);
       
-      if (response.error) {
-        throw new Error(response.error);
+      if (response.data.error) {
+        throw new Error(response.data.error);
       }
       
-      console.log('Results state set to:', response);
-      setResults(response);
+      console.log('Results state set to:', response.data);
+      setResults(response.data);
+      
+      if (response.data.iteration_history && response.data.iteration_history.length > 0) {
+        setIterationsHistory(response.data.iteration_history);
+        setCurrentIteration(0);
+        setAlgorithmStatus("completed");
+      } else {
+        setAlgorithmStatus("idle");
+      }
     } catch (err) {
       console.error('Error details:', err);
+      setAlgorithmStatus("idle");
       
       // Check if the error is related to learning rate
       const errorMessage = err.message || 'An error occurred while running the model.';
@@ -382,6 +489,37 @@ function Reg() {
     }
   };
 
+  // Playback control methods (like in DBScan)
+  const goToStart = () => {
+    setCurrentIteration(0);
+  };
+  
+  const goToEnd = () => {
+    setCurrentIteration(iterations_history.length - 1);
+  };
+  
+  const stepForward = () => {
+    if (currentIteration < iterations_history.length - 1) {
+      setCurrentIteration(prev => prev + 1);
+    }
+  };
+  
+  const stepBackward = () => {
+    if (currentIteration > 0) {
+      setCurrentIteration(prev => prev - 1);
+    }
+  };
+  
+  const goToIteration = (index) => {
+    if (index >= 0 && index < iterations_history.length) {
+      setCurrentIteration(index);
+    }
+  };
+  
+  const togglePlayback = () => {
+    setIsAutoAdvancing(prev => !prev);
+  };
+  
   const SampleDataModal = () => (
     <div style={{
       position: 'fixed',
@@ -397,19 +535,22 @@ function Reg() {
     }}>
       <div style={{
         backgroundColor: 'white',
-        padding: '1.5rem',
-        borderRadius: '8px',
-        width: '90%',
+        padding: '2rem',
+        borderRadius: '0.5rem',
         maxWidth: '500px',
-        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+        width: '90%'
       }}>
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '1rem'
+          marginBottom: '1.5rem'
         }}>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: '600' }}>
+          <h2 style={{
+            fontSize: '1.5rem',
+            fontWeight: '600',
+            margin: 0
+          }}>
             Generate Sample Data
           </h2>
           <button 
@@ -425,10 +566,80 @@ function Reg() {
             ×
           </button>
         </div>
-
-        {/* Sample count slider */}
+        
+        {/* Dataset Type Selection */}
         <div style={{ marginBottom: '1.25rem' }}>
-          <label htmlFor="sample-count" style={{ 
+          <label style={{ 
+            display: 'block', 
+            marginBottom: '0.5rem', 
+            fontWeight: '500', 
+            color: '#4b5563' 
+          }}>
+            Dataset Type
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+            <button
+              onClick={() => setSampleType('linear')}
+              style={{
+                padding: '0.5rem 0.75rem',
+                backgroundColor: sampleType === 'linear' ? '#3b82f6' : '#e5e7eb',
+                color: sampleType === 'linear' ? 'white' : '#4b5563',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              <span style={{ fontWeight: '500' }}>Linear</span>
+              <span style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>Straight line</span>
+            </button>
+            
+            <button
+              onClick={() => setSampleType('quadratic')}
+              style={{
+                padding: '0.5rem 0.75rem',
+                backgroundColor: sampleType === 'quadratic' ? '#3b82f6' : '#e5e7eb',
+                color: sampleType === 'quadratic' ? 'white' : '#4b5563',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              <span style={{ fontWeight: '500' }}>Quadratic</span>
+              <span style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>Parabolic curve</span>
+            </button>
+            
+            <button
+              onClick={() => setSampleType('sinusoidal')}
+              style={{
+                padding: '0.5rem 0.75rem',
+                backgroundColor: sampleType === 'sinusoidal' ? '#3b82f6' : '#e5e7eb',
+                color: sampleType === 'sinusoidal' ? 'white' : '#4b5563',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              <span style={{ fontWeight: '500' }}>Sinusoidal</span>
+              <span style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>Wave pattern</span>
+            </button>
+          </div>
+        </div>
+        
+        {/* Number of Samples */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label htmlFor="samples-slider" style={{ 
             display: 'block', 
             marginBottom: '0.5rem', 
             fontWeight: '500', 
@@ -437,7 +648,7 @@ function Reg() {
             Number of Samples: {sampleCount}
           </label>
           <input
-            id="sample-count"
+            id="samples-slider"
             type="range"
             min="10"
             max="100"
@@ -457,10 +668,10 @@ function Reg() {
             <span>100 (More points)</span>
           </div>
         </div>
-
-        {/* Noise level slider */}
+        
+        {/* Noise level */}
         <div style={{ marginBottom: '1.25rem' }}>
-          <label htmlFor="noise" style={{ 
+          <label htmlFor="noise-slider" style={{ 
             display: 'block', 
             marginBottom: '0.5rem', 
             fontWeight: '500', 
@@ -469,7 +680,7 @@ function Reg() {
             Noise Level: {sampleNoise.toFixed(1)}
           </label>
           <input
-            id="noise"
+            id="noise-slider"
             type="range"
             min="1.0"
             max="10.0"
@@ -489,7 +700,7 @@ function Reg() {
             <span>10.0 (Noisy data)</span>
           </div>
         </div>
-
+        
         <div style={{ 
           display: 'flex', 
           justifyContent: 'flex-end',
@@ -511,7 +722,7 @@ function Reg() {
             Cancel
           </button>
           <button
-            onClick={generateSampleDataWithOptions}
+            onClick={generateSampleData}
             style={{
               padding: '0.6rem 1.2rem',
               backgroundColor: '#3b82f6',
@@ -522,63 +733,14 @@ function Reg() {
               fontWeight: '500'
             }}
           >
-            Generate Data
+            Generate
           </button>
         </div>
       </div>
     </div>
   );
 
-  // Add this in your JSX where appropriate (with the other sliders)
-  const degreeSlider = (
-    <div style={{ marginTop: '1.5rem' }}>
-      <label htmlFor="degree-slider" style={{ 
-        display: 'block', 
-        marginBottom: '0.5rem', 
-        fontWeight: '500', 
-        color: '#4b5563' 
-      }}>
-        Polynomial Degree: {degree}
-      </label>
-      <input
-        id="degree-slider"
-        type="range"
-        min="1"
-        max="5"
-        step="1"
-        value={degree}
-        onChange={(e) => setDegree(parseInt(e.target.value))}
-        style={{ width: '100%' }}
-      />
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        fontSize: '0.8rem', 
-        color: '#6b7280',
-        marginTop: '0.25rem'
-      }}>
-        <span>1 (Linear)</span>
-        <span>5 (Higher-order)</span>
-      </div>
-      
-      {degree > 3 && (
-        <div style={{
-          marginTop: '0.5rem',
-          padding: '0.5rem',
-          backgroundColor: '#FEF2F2',
-          borderRadius: '0.375rem',
-          borderLeft: '3px solid #EF4444',
-          color: '#B91C1C',
-          fontSize: '0.875rem'
-        }}>
-          <strong>Warning:</strong> Higher-degree polynomials may overfit the data.
-          Use with caution, especially with few data points.
-        </div>
-      )}
-    </div>
-  );
-
-  // Update the title and description
+  // Page title and description
   const pageTitle = "Polynomial Regression";
   const pageDescription = "Polynomial Regression extends linear regression to fit an nth degree polynomial equation to data, modeling non-linear relationships.";
 
@@ -589,6 +751,8 @@ function Reg() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
+      {showSampleDataModal && <SampleDataModal />}
+      
       <div className="model-header">
         <button className="back-button" onClick={() => navigate('/')}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -603,24 +767,24 @@ function Reg() {
       <p className="model-description">
         {pageDescription}
         <button 
-            onClick={() => navigate('/docs')} 
-            style={{
-                background: 'none',
-                border: 'none',
-                color: '#3b82f6',
-                cursor: 'pointer',
-                marginLeft: '8px',
-                padding: '0',
-                display: 'inline-flex',
-                alignItems: 'center'
-            }}
-            title="More information"
+          onClick={() => navigate('/docs')} 
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#3b82f6',
+            cursor: 'pointer',
+            marginLeft: '8px',
+            padding: '0',
+            display: 'inline-flex',
+            alignItems: 'center'
+          }}
+          title="More information"
         >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="16" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
         </button>
       </p>
 
@@ -637,389 +801,603 @@ function Reg() {
         </div>
       )}
 
-      <div className="content-container" style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr 1fr', 
-        gap: '2rem',
-        alignItems: 'start'
-      }}>
-        <div className="input-section">
-          <div className="section-header">
-            <h2 className="section-title">Interactive Data Input</h2>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button 
-                className="sample-data-button" 
-                onClick={() => setShowSampleDataModal(true)} 
-                disabled={sampleLoading}
-              >
-                {sampleLoading ? 'Loading...' : 'Generate Sample Data'}
-              </button>
-              <button 
-                className="sample-data-button" 
-                onClick={resetData}
-                style={{
-                  backgroundColor: '#fee2e2',
-                  color: '#b91c1c'
-                }}
-              >
-                Reset Data
-              </button>
-            </div>
-          </div>
-          
-          {error && <div className="error-message">{error}</div>}
+      {error && (
+        <div className="error-message">
+          {error}
+        </div>
+      )}
 
-          <div style={{ marginBottom: '1.5rem' }}>
-            <p style={{ color: '#4b5563', marginBottom: '0.5rem', lineHeight: '1.5' }}>
-              Click on the graph below to add data points, or manually enter values in the table.
-            </p>
-          </div>
-          
-          {/* Interactive Canvas */}
+      <div className="content-container" style={{ 
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <div style={{ 
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: '1.5rem',
+          width: '100%',
+          marginBottom: '1.5rem'
+        }}>
           <div style={{ 
-            marginBottom: '1.5rem',
-            border: '1px solid #e5e7eb', 
-            borderRadius: '0.75rem', 
-            overflow: 'hidden',
-            position: 'relative',
-            backgroundColor: '#f9fafb',
-            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+            width: '100%',
+            gridColumn: '1 / 2',
+            gridRow: '1 / 2',
+            display: 'flex',
+            flexDirection: 'column'
           }}>
-            <canvas 
-              ref={canvasRef}
-              width={canvasDimensions.width}
-              height={canvasDimensions.height}
-              onClick={handleCanvasClick}
-              style={{ 
-                display: 'block', 
-                cursor: 'crosshair'
-              }}
-            />
-            
-            {/* Add a click overlay hint */}
-            <div style={{
-              position: 'absolute',
-              bottom: '10px',
-              right: '10px',
-              padding: '4px 8px',
-              backgroundColor: 'rgba(255, 255, 255, 0.8)',
-              borderRadius: '4px',
-              fontSize: '0.8rem',
-              color: '#4b5563',
-              pointerEvents: 'none'
+            <div className="section-header" style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1rem'
             }}>
-              Click to add point
-            </div>
-          </div>
-          
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem' }}>Data Points Table</h3>
-          <div style={{ 
-            marginBottom: '1.5rem',
-            maxHeight: '200px', 
-            overflowY: 'auto',
-            border: '1px solid #e5e7eb',
-            borderRadius: '0.5rem',
-            padding: '0.5rem'
-          }}>
-            <div style={{ marginBottom: '0.5rem', display: 'flex', fontWeight: 'bold' }}>
-              <div style={{ flex: 1 }}>X</div>
-              <div style={{ flex: 1 }}>Y</div>
-              <div style={{ width: '30px' }}></div>
-            </div>
-            
-            {dataPairs.map((pair, index) => (
-              <div key={index} className="data-input-container" style={{
-                display: 'flex',
-                alignItems: 'center',
-                marginBottom: '5px'
-              }}>
-                <div style={{ display: 'flex', flex: 1, gap: '5px' }}>
-                  <input
-                    type="text"
-                    style={{
-                      flex: 1,
-                      padding: '5px 8px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px'
-                    }}
-                    placeholder="X value"
-                    value={pair.x}
-                    onChange={(e) => handleInputChange(index, 'x', e.target.value)}
-                  />
-                  <input
-                    type="text"
-                    style={{
-                      flex: 1,
-                      padding: '5px 8px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px'
-                    }}
-                    placeholder="Y value"
-                    value={pair.y}
-                    onChange={(e) => handleInputChange(index, 'y', e.target.value)}
-                  />
-                </div>
+              <h2 className="section-title">Data Points</h2>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button 
-                  onClick={() => handleRemovePair(index)}
-                  aria-label="Remove data point"
+                  className="sample-data-button" 
+                  onClick={loadSampleData}
+                  disabled={loading || algorithmStatus !== "idle"}
                   style={{
-                    width: '28px',
-                    height: '28px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#f3f4f6',
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: '#3b82f6',
+                    color: 'white',
                     border: 'none',
-                    borderRadius: '4px',
-                    marginLeft: '8px',
+                    borderRadius: '0.375rem',
                     cursor: 'pointer',
-                    fontSize: '1.2rem',
-                    color: '#6b7280'
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    opacity: loading || algorithmStatus !== "idle" ? 0.7 : 1
                   }}
                 >
-                  ×
+                  Load Sample Data
+                </button>
+                <button 
+                  className="reset-button" 
+                  onClick={resetData}
+                  disabled={loading || dataPairs.length <= 1 && dataPairs[0].x === '' && dataPairs[0].y === ''}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    opacity: loading || (dataPairs.length <= 1 && dataPairs[0].x === '' && dataPairs[0].y === '') ? 0.7 : 1
+                  }}
+                >
+                  Reset Data
                 </button>
               </div>
-            ))}
-            
-            <button 
-              onClick={handleAddPair}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '100%',
-                padding: '5px',
-                backgroundColor: '#f3f4f6',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                marginTop: '10px',
-                color: '#4b5563',
-                fontWeight: '500'
-              }}
-            >
-              + Add Data Point
-            </button>
-          </div>
-          
-          {/* Learning Rate Slider */}
-          <div style={{ marginTop: '1.5rem' }}>
-            <label htmlFor="alpha-slider" style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontWeight: '500', 
-              color: '#4b5563' 
-            }}>
-              Learning Rate (Alpha): {alpha.toFixed(4)}
-            </label>
-            <input
-              id="alpha-slider"
-              type="range"
-              min="0.0001"
-              max="0.9"
-              step="0.0005"
-              value={alpha}
-              onChange={(e) => setAlpha(parseFloat(e.target.value))}
-              style={{ width: '100%' }}
-            />
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              fontSize: '0.8rem', 
-              color: '#6b7280',
-              marginTop: '0.25rem'
-            }}>
-              <span>0.0001 (Slow learning)</span>
-              <span>0.9 (Fast learning)</span>
             </div>
             
-            {isHighAlpha && (
+            <p style={{ marginBottom: '1rem', color: '#4b5563', fontSize: '0.875rem' }}>
+              {algorithmStatus === "running" ? 
+                "Polynomial regression is running. Please wait..." : 
+                algorithmStatus === "completed" ?
+                "Use the playback controls below to see how the regression line evolves over iterations." :
+                "Click on the canvas below to add data points. You can adjust parameters and run the regression when ready."}
+            </p>
+
+            <div style={{ 
+              marginBottom: '1rem',
+              border: '1px solid #e5e7eb', 
+              borderRadius: '0.75rem', 
+              overflow: 'hidden',
+              position: 'relative',
+              backgroundColor: '#f9fafb',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+              width: '100%',
+              height: 0,
+              paddingBottom: '100%'
+            }}>
               <div style={{
-                marginTop: '0.5rem',
-                padding: '0.5rem',
-                backgroundColor: '#FEF2F2',
-                borderRadius: '0.375rem',
-                borderLeft: '3px solid #EF4444',
-                color: '#B91C1C',
-                fontSize: '0.875rem'
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0
               }}>
-                <strong>Warning:</strong> High learning rates may cause exploding gradients and divergence. 
-                Values below 0.8 are recommended for most datasets.
+                <canvas 
+                  ref={canvasRef}
+                  width={canvasWidth}
+                  height={canvasHeight}
+                  onClick={handleCanvasClick}
+                  style={{ 
+                    display: 'block', 
+                    cursor: algorithmStatus === "idle" ? 'crosshair' : 'default',
+                    width: '100%',
+                    height: '100%'
+                  }}
+                />
+              </div>
+              
+              {/* Click overlay hint */}
+              {algorithmStatus === "idle" && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '10px',
+                  right: '10px',
+                  padding: '4px 8px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                  borderRadius: '4px',
+                  fontSize: '0.8rem',
+                  color: '#4b5563',
+                  pointerEvents: 'none'
+                }}>
+                  Click to add point
+                </div>
+              )}
+            </div>
+            
+            {algorithmStatus === "completed" && iterations_history.length > 0 && (
+              <div className="playback-controls" style={{
+                backgroundColor: 'white',
+                padding: '1rem',
+                borderRadius: '0.5rem',
+                border: '1px solid #e5e7eb',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '1rem', 
+                  marginBottom: '0.75rem' 
+                }}>
+                  <button
+                    onClick={goToStart}
+                    disabled={currentIteration === 0}
+                    style={{
+                      padding: '0.5rem',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer',
+                      color: currentIteration === 0 ? '#d1d5db' : '#374151'
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                      <line x1="5" y1="19" x2="5" y2="5"></line>
+                    </svg>
+                  </button>
+                  
+                  <button
+                    onClick={stepBackward}
+                    disabled={currentIteration === 0}
+                    style={{
+                      padding: '0.5rem',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer',
+                      color: currentIteration === 0 ? '#d1d5db' : '#374151'
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                    </svg>
+                  </button>
+                  
+                  <button
+                    onClick={togglePlayback}
+                    style={{
+                      padding: '0.75rem',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '40px',
+                      height: '40px',
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}
+                  >
+                    {isAutoAdvancing ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="6" y="4" width="4" height="16"></rect>
+                        <rect x="14" y="4" width="4" height="16"></rect>
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                      </svg>
+                    )}
+                  </button>
+                  
+                  <button
+                    onClick={stepForward}
+                    disabled={currentIteration === iterations_history.length - 1}
+                    style={{
+                      padding: '0.5rem',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer',
+                      color: currentIteration === iterations_history.length - 1 ? '#d1d5db' : '#374151'
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'rotate(180deg)' }}>
+                      <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                    </svg>
+                  </button>
+                  
+                  <button
+                    onClick={goToEnd}
+                    disabled={currentIteration === iterations_history.length - 1}
+                    style={{
+                      padding: '0.5rem',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer',
+                      color: currentIteration === iterations_history.length - 1 ? '#d1d5db' : '#374151'
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'rotate(180deg)' }}>
+                      <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                      <line x1="5" y1="19" x2="5" y2="5"></line>
+                    </svg>
+                  </button>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ position: 'relative', width: '100%', marginBottom: '1.5rem' }}>
+                    <div style={{ 
+                      width: '100%',
+                      height: '8px',
+                      backgroundColor: '#e5e7eb',
+                      borderRadius: '4px',
+                      position: 'relative',
+                      cursor: 'pointer'
+                    }} 
+                    onClick={(e) => {
+                      // Calculate position relative to the bar
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = e.clientX - rect.left;
+                      const percentage = x / rect.width;
+                      // Calculate the iteration based on position
+                      const newIteration = Math.floor(percentage * iterations_history.length);
+                      goToIteration(newIteration);
+                    }}>
+                      <div 
+                        style={{ 
+                          position: 'absolute',
+                          top: '0',
+                          left: '0',
+                          width: `${(currentIteration / Math.max(1, iterations_history.length - 1)) * 100}%`,
+                          height: '100%',
+                          backgroundColor: '#3b82f6',
+                          borderRadius: '4px',
+                          transition: 'width 0.3s ease'
+                        }}
+                      ></div>
+                    </div>
+                    
+                    <span style={{ 
+                      position: 'absolute',
+                      top: '-20px',
+                      left: `${(currentIteration / Math.max(1, iterations_history.length - 1)) * 100}%`,
+                      transform: 'translateX(-50%)',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '0.7rem',
+                      fontWeight: '500'
+                    }}>
+                      {currentIteration + 1} of {iterations_history.length}
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280', whiteSpace: 'nowrap' }}>Speed:</span>
+                    <input 
+                      type="range"
+                      min="500"
+                      max="4000"
+                      step="50"
+                      value={4050 - playbackSpeed}
+                      onChange={(e) => setPlaybackSpeed(4050 - parseInt(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: '#374151' }}>
+                      {playbackSpeed < 500 ? 'Fast' : 'Slow'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Statistics */}
+            <div style={{ 
+              marginTop: '0.5rem',
+              marginBottom: '1rem',
+              backgroundColor: '#f9fafb', 
+              padding: '1rem', 
+              borderRadius: '0.5rem',
+              border: '1px solid #e5e7eb',
+              width: '100%'
+            }}>
+              <p style={{ fontWeight: '500', marginBottom: '0.5rem', color: '#4b5563' }}>
+                Statistics:
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <strong>Data Points:</strong> {getValidPoints().length}
+                </div>
+                <div>
+                  <strong>Polynomial Degree:</strong> {degree}
+                </div>
+                <div>
+                  <strong>Learning Rate:</strong> {alpha.toFixed(4)}
+                </div>
+              </div>
+            </div>
+            
+            {/* Results section moved here */}
+            {results && (
+              <div style={{ 
+                backgroundColor: 'white', 
+                padding: '1.5rem', 
+                borderRadius: '6px', 
+                border: '1px solid #e5e7eb',
+                width: '100%',
+                marginBottom: '1rem'
+              }}>
+                <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '500' }}>Results</h3>
+                
+                <div style={{
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '6px',
+                  padding: '1rem',
+                  backgroundColor: '#f9fafb',
+                  marginBottom: '1rem'
+                }}>
+                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>Model Equation</div>
+                  <div style={{ fontWeight: '600', fontSize: '1.2rem', fontFamily: 'math, serif' }}>
+                    {`y = ${
+                      results.intercept !== undefined ? 
+                      (results.intercept >= 0 ? results.intercept.toFixed(4) : results.intercept.toFixed(4)) : 
+                      '?'
+                    } ${
+                      results.coefficients ? 
+                      results.coefficients.map((coef, index) => 
+                        `${coef >= 0 ? '+ ' : '- '}${Math.abs(coef).toFixed(4)}x${index+1 > 1 ? `^${index+1}` : ''}`
+                      ).join(' ') : 
+                      ''
+                    }`}
+                  </div>
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                    <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>R² Score</div>
+                    <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
+                      {results.r2 !== undefined ? results.r2.toFixed(4) : 'N/A'}
+                    </div>
+                  </div>
+                  
+                  <div style={{ padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                    <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Mean Squared Error</div>
+                    <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
+                      {results.mse !== undefined ? results.mse.toFixed(4) : 'N/A'}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Model insights section */}
+                <div style={{ backgroundColor: 'white', padding: '0.5rem 0' }}>
+                  <p style={{ fontSize: '0.9rem', color: '#4b5563', marginBottom: '0.5rem' }}>
+                    {degree === 1 ? (
+                      <>
+                        Linear regression (degree 1) fits a straight line to the data. 
+                        {results && results.r2 > 0.8 ? (
+                          " Your data appears to have a strong linear relationship."
+                        ) : results && results.r2 > 0.5 ? (
+                          " Your data shows a moderate linear trend."
+                        ) : (
+                          " Your data might benefit from a higher polynomial degree to capture non-linear patterns."
+                        )}
+                      </>
+                    ) : degree <= 3 ? (
+                      <>
+                        Polynomial regression with degree {degree} can model curved relationships in the data.
+                        {results && results.r2 > 0.8 ? (
+                          " This model fits your data well."
+                        ) : results && results.r2 > 0.5 ? (
+                          " The model captures some patterns in your data."
+                        ) : (
+                          " Consider adjusting the polynomial degree or adding more data points."
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        Higher-degree polynomials (degree {degree}) can fit complex curves but may overfit with limited data.
+                        {results && results.r2 > 0.9 ? (
+                          " While the R² score is high, be cautious of overfitting."
+                        ) : (
+                          " If performance is poor, try reducing the degree or adding more data points."
+                        )}
+                      </>
+                    )}
+                  </p>
+                </div>
               </div>
             )}
           </div>
           
-          {/* Iterations Slider */}
-          <div style={{ marginTop: '1.5rem' }}>
-            <label htmlFor="iterations-slider" style={{ 
-              display: 'block', 
-              marginBottom: '0.5rem', 
-              fontWeight: '500', 
-              color: '#4b5563' 
-            }}>
-              Max Iterations: {iterations}
-            </label>
-            <input
-              id="iterations-slider"
-              type="range"
-              min="1"
-              max="1000"
-              step="1"
-              value={iterations} 
-              onChange={(e) => setIterations(parseInt(e.target.value))}
-              style={{ width: '100%' }}
-            />
+          <div style={{ 
+            width: '100%',
+            gridColumn: '2 / 3',
+            gridRow: '1 / 2',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <h2 className="section-title" style={{ marginBottom: '1rem' }}>Algorithm Controls</h2>
+            
             <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              fontSize: '0.8rem', 
-              color: '#6b7280',
-              marginTop: '0.25rem'
+              marginBottom: '1.5rem', 
+              backgroundColor: 'white', 
+              padding: '1.5rem', 
+              borderRadius: '6px', 
+              border: '1px solid #e5e7eb',
+              width: '100%'
             }}>
-              <span>1 (Fast but might not converge)</span>
-              <span>1000(More accurate)</span>
+              <h3 style={{ marginBottom: '1.25rem', fontSize: '1.1rem', fontWeight: '500' }}>Parameters</h3>
+              
+              {/* Learning Rate Slider */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label htmlFor="alpha-param" style={{ 
+                  display: 'block', 
+                  marginBottom: '0.5rem', 
+                  fontWeight: '500', 
+                  color: '#4b5563' 
+                }}>
+                  Learning Rate (Alpha): {alpha.toFixed(4)}
+                </label>
+                <input 
+                  id="alpha-param"
+                  type="range"
+                  min="0.0001"
+                  max="0.9"
+                  step="0.0001"
+                  value={alpha}
+                  onChange={(e) => setAlpha(parseFloat(e.target.value))}
+                  disabled={algorithmStatus === "running"}
+                  style={{ width: '100%' }}
+                />
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  fontSize: '0.85rem', 
+                  color: '#6b7280',
+                  marginTop: '0.5rem'
+                }}>
+                  <span>0.0001 (Slow learning)</span>
+                  <span>0.9 (Fast learning)</span>
+                </div>
+               
+              </div>
+              
+              {/* Iterations Slider */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label htmlFor="iterations-param" style={{ 
+                  display: 'block', 
+                  marginBottom: '0.5rem', 
+                  fontWeight: '500', 
+                  color: '#4b5563' 
+                }}>
+                  Max Iterations: {iterations}
+                </label>
+                <input 
+                  id="iterations-param"
+                  type="range"
+                  min="100"
+                  max="1000"
+                  step="100"
+                  value={iterations}
+                  onChange={(e) => setIterations(parseInt(e.target.value))}
+                  disabled={algorithmStatus === "running"}
+                  style={{ width: '100%' }}
+                />
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  fontSize: '0.85rem', 
+                  color: '#6b7280',
+                  marginTop: '0.5rem'
+                }}>
+                  <span>100 (Faster)</span>
+                  <span>1000 (More accurate)</span>
+                </div>
+              </div>
+              
+              {/* Polynomial Degree Slider */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label htmlFor="degree-param" style={{ 
+                  display: 'block', 
+                  marginBottom: '0.5rem', 
+                  fontWeight: '500', 
+                  color: '#4b5563' 
+                }}>
+                  Polynomial Degree: {degree}
+                </label>
+                <input 
+                  id="degree-param"
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={degree}
+                  onChange={(e) => setDegree(parseInt(e.target.value))}
+                  disabled={algorithmStatus === "running"}
+                  style={{ width: '100%' }}
+                />
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  fontSize: '0.85rem', 
+                  color: '#6b7280',
+                  marginTop: '0.5rem'
+                }}>
+                  <span>1 (Linear)</span>
+                  <span>10 (Higher-order)</span>
+                </div>
+              </div>
+              
+              <div style={{ marginTop: '2rem' }}>
+                <button
+                  onClick={handleRunModel}
+                  disabled={loading || backendStatus === "disconnected" || getValidPoints().length < 2 || algorithmStatus === "running"}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    backgroundColor: loading ? '#93c5fd' : '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                    fontSize: '1rem',
+                    opacity: (loading || backendStatus === "disconnected" || getValidPoints().length < 2 || algorithmStatus === "running") ? 0.7 : 1
+                  }}
+                >
+                  {loading ? 'Running...' : 'Run Polynomial Regression'}
+                </button>
+              </div>
             </div>
-          </div>
-          
-          {degreeSlider}
-          
-          <div style={{ marginTop: '1.5rem' }}>
-            <button 
-              onClick={handleRunModel}
-              disabled={loading || backendStatus === "disconnected"}
-              style={{
-                width: '100%',
-                backgroundColor: loading ? '#93c5fd' : '#3b82f6',
-                color: 'white',
-                padding: '12px',
-                fontSize: '1.1rem',
-                fontWeight: '500',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: loading ? 'wait' : 'pointer',
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                opacity: (loading || backendStatus === "disconnected") ? 0.7 : 1
-              }}
-            >
-              {loading ? 'Running...' : 'Run Regression'}
-            </button>
-          </div>
-        </div>
 
-        <div className="results-section">
-          <h2 className="section-title">Results</h2>
-          {loading ? (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: '200px'
-            }}>
-              <div style={{
-                border: '4px solid #f3f4f6',
-                borderTopColor: '#3b82f6',
-                borderRadius: '50%',
-                width: '40px',
-                height: '40px',
-                animation: 'spin 1s linear infinite'
-              }}></div>
-              <style>{`
-                @keyframes spin {
-                  0% { transform: rotate(0deg); }
-                  100% { transform: rotate(360deg); }
-                }
-              `}</style>
-            </div>
-          ) : results ? (
-            <div style={{ padding: '1rem' }}>
-              <div style={{
-                border: '1px solid #e5e7eb',
-                borderRadius: '6px',
-                padding: '1rem',
-                backgroundColor: 'white',
-                marginBottom: '1rem'
-              }}>
-                <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>Model Equation</div>
-                <div style={{ fontWeight: '600', fontSize: '1.2rem' }}>
-                  {`y = ${results.coefficients ? results.coefficients.map((coef, index) => `${coef.toFixed(4)}x^${index + 1}`).join(' + ') : '?'} + ${results.intercept !== undefined ? results.intercept.toFixed(4) : '?'}`}
-                </div>
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Coefficients</div>
-                  <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
-                    {results.coefficients ? results.coefficients.map((coef, index) => (
-                      <div key={index}>{`x^${index + 1}: ${coef.toFixed(4)}`}</div>
-                    )) : 'N/A'}
-                  </div>
-                </div>
-                
-                <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Intercept</div>
-                  <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
-                    {results.intercept !== undefined ? results.intercept.toFixed(4) : 'N/A'}
-                  </div>
-                </div>
-                
-                <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>R² Score</div>
-                  <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
-                    {results.r2 !== undefined ? results.r2.toFixed(4) : 'N/A'}
-                  </div>
-                </div>
-                
-                <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Mean Squared Error</div>
-                  <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
-                    {results.mse !== undefined ? results.mse.toFixed(4) : 'N/A'}
-                  </div>
-                </div>
-              </div>
-              
-              {/* Show cost history plot if available */}
-              {results.cost_history_plot && (
-                <div style={{ marginTop: '1.5rem', backgroundColor: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                  <h3 style={{ marginBottom: '0.75rem', fontSize: '1.1rem', fontWeight: '500' }}>Learning Curve:</h3>
-                  <img 
-                    src={`data:image/png;base64,${results.cost_history_plot}`} 
-                    alt="Cost History Plot" 
-                    style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
-                  />
-                  <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-                    This graph shows how the Mean Squared Error decreases over iterations during training.
-                  </p>
-                </div>
-              )}
-              
-              {/* Model Fit Visualization Info - note that actual visualization is shown on the canvas */}
+            {/* Cost history plot moved here */}
+            {results && results.cost_history_plot && (
               <div style={{ 
-                marginTop: '1.5rem', 
+                marginBottom: '1.5rem', 
                 backgroundColor: 'white', 
                 padding: '1rem', 
                 borderRadius: '6px', 
-                border: '1px solid #e5e7eb' 
+                border: '1px solid #e5e7eb',
+                width: '100%'
               }}>
-                <h3 style={{ marginBottom: '0.75rem', fontSize: '1.1rem', fontWeight: '500' }}>Model Fit Visualization:</h3>
-                <p style={{ color: '#6b7280', fontSize: '0.9rem' }}>
-                  The regression line is shown in red on the interactive graph. Blue points are your data.
+                <h3 style={{ marginBottom: '0.75rem', fontSize: '1.1rem', fontWeight: '500' }}>Learning Curve</h3>
+                <img 
+                  src={`data:image/png;base64,${results.cost_history_plot}`} 
+                  alt="Cost History Plot" 
+                  style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
+                />
+                <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                  This graph shows how the Mean Squared Error decreases over iterations during training.
                 </p>
               </div>
-            </div>
-          ) : (
-            <div style={{ 
-              color: '#6b7280', 
-              textAlign: 'center', 
-              padding: '2rem',
-              backgroundColor: '#f9fafb',
-              borderRadius: '6px',
-              border: '1px dashed #d1d5db' 
-            }}>
-              <p>Add points by clicking on the interactive graph or using the table.</p>
-              <p>Then click "Run Regression" to see results.</p>
-            </div>
-          )}
+            )}
+            
+            
+          </div>
         </div>
       </div>
       {showSampleDataModal && <SampleDataModal />}
