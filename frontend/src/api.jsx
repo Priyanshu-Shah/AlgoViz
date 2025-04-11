@@ -12,100 +12,49 @@ export const getModelDetails = async (id) => {
   return response.data;
 };
 
-export const runLinearRegression = async (data) => {
+// Update these functions:
+
+export async function runPolynomialRegression(data) {
   try {
-    console.log('API call to:', `${API_URL}/linear-regression`);
-    console.log('Data being sent:', JSON.stringify(data, null, 2));
+    // Make sure we're using the correct API URL with port 5000
+    const API_URL = 'http://localhost:5000/api';
     
-    // Add timeout to prevent hanging requests
-    const response = await axios.post(`${API_URL}/linear-regression`, data, {
-      timeout: 30000, // 30 second timeout
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
+    const response = await fetch(`${API_URL}/regression`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
     });
     
-    console.log('API raw response status:', response.status);
-    console.log('API raw response type:', typeof response.data);
-    
-    // Directly check if response.data exists, has expected properties
-    if (!response.data) {
-      console.error('Empty response received from server');
-      return { error: 'Empty response received from server' };
+    if (!response.ok) {
+      throw new Error(`HTTP error: ${response.status}`);
     }
     
-    // Additional check for basic result structure
-    if (response.data && 
-        typeof response.data === 'object' && 
-        !response.data.error) {
-      const keys = Object.keys(response.data);
-      console.log('Response contains keys:', keys);
-      
-      // Ensure all numeric values are converted to numbers
-      const processedData = {...response.data};
-      for (const key in processedData) {
-        if (key !== 'plot' && key !== 'equation' && processedData[key] !== null) {
-          const num = parseFloat(processedData[key]);
-          if (!isNaN(num)) {
-            processedData[key] = num;
-          }
-        }
-      }
-      
-      // Map the train metrics to the expected names in the frontend
-      if (processedData.mse_train !== undefined && processedData.r2_train !== undefined) {
-        processedData.mse = processedData.mse_train;
-        processedData.r2 = processedData.r2_train;
-      }
-
-      // Remove the test metrics if you don't need them
-      delete processedData.mse_test;
-      delete processedData.r2_test;
-      delete processedData.mse_train;
-      delete processedData.r2_train;
-      
-      return processedData;
-    }
-    
-    // Return the data as is (might contain error info)
-    return response.data;
+    const result = await response.json();
+    return result;
   } catch (error) {
-    console.error('API error in runLinearRegression:', error);
+    console.error('Error running polynomial regression:', error);
+    throw error;
+  }
+}
+
+export async function getPolynomialRegressionSampleData(count = 30, noise = 5, degree = 2) {
+  try {
+    // Make sure we're using the correct API URL with port 5000
+    const API_URL = 'http://localhost:5000/api';
     
-    let errorMessage = 'Network error or server unavailable';
-    let errorDetails = {};
+    const response = await fetch(`${API_URL}/regression/sample?count=${count}&noise=${noise}&degree=${degree}`);
     
-    if (error.response) {
-      // The server responded with a status code outside the 2xx range
-      console.error('Server error status:', error.response.status);
-      console.error('Server error data:', error.response.data);
-      errorMessage = error.response.data.error || `Server error: ${error.response.status}`;
-      errorDetails = error.response.data;
-    } else if (error.request) {
-      // The request was made but no response was received
-      console.error('No response received:', error.request);
-      errorMessage = 'No response received from server';
-    } else {
-      // Something happened in setting up the request
-      console.error('Request setup error:', error.message);
-      errorMessage = `Request error: ${error.message}`;
+    if (!response.ok) {
+      throw new Error(`HTTP error: ${response.status}`);
     }
     
-    return {
-      error: errorMessage,
-      details: errorDetails,
-      isClientError: true
-    };
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error getting sample data:', error);
+    throw error;
   }
-};
-
-export const getLinearRegressionSampleData = async (n_samples = 30, noise = 5.0) => {
-  const response = await axios.get(
-    `${API_URL}/linear-regression/sample?n_samples=${n_samples}&noise=${noise}`
-  );
-  return response.data;
-};
+}
 
 export const getSVMSampleData = async (n_samples = 30, noise = 0.1) => {
   const response = await axios.get(

@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
 import HomePage from './pages/HomePage';
-import LinReg from './pages/LinReg';
+import Reg from './pages/Reg';
 import KNN from './pages/KNN';
 import DTrees from './pages/DTrees';
 import KMeans from './pages/KMeans';
@@ -19,7 +19,7 @@ function App() {
       <MainLayout>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/lin-reg" element={<LinReg />} />
+          <Route path="/reg" element={<Reg />} />
           <Route path="/knn" element={<KNN />} />
           <Route path="/d-trees" element={<DTrees />} />
           <Route path="/kmeans" element={<KMeans />} />

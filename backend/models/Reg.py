@@ -6,25 +6,32 @@ matplotlib.use('Agg')  # Use Agg backend (non-interactive, doesn't require GUI)
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.preprocessing import PolynomialFeatures
 import io
 import base64
 
-def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6):
+def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6, polynomial_degree=1):
     """
-    Implements gradient descent for linear regression with safeguards for high learning rates
+    Implements gradient descent for polynomial regression with safeguards for high learning rates
     
     Parameters:
-    X (numpy.ndarray): Feature matrix
+    X (numpy.ndarray): Feature matrix (can be polynomial features)
     y (numpy.ndarray): Target vector
     learning_rate (float): Learning rate for gradient descent
     n_iterations (int): Maximum number of iterations
     tolerance (float): Convergence threshold for stopping criterion
+    polynomial_degree (int): Degree of polynomial to adjust learning rate
     
     Returns:
-    tuple: (coefficient, intercept, cost_history, actual_iterations)
+    tuple: (coefficients, intercept, cost_history, actual_iterations)
     """
     # Add a column of ones to X for the intercept term
     X_b = np.c_[np.ones((X.shape[0], 1)), X]
+    
+    # Scale learning rate based on polynomial degree
+    # As polynomial degree increases, we need to reduce learning rate
+    scaled_learning_rate = learning_rate / (polynomial_degree ** 1.5) if polynomial_degree > 1 else learning_rate
+    print(f"Original learning rate: {learning_rate}, Scaled learning rate: {scaled_learning_rate}")
     
     # Initialize parameters (theta)
     theta = np.zeros(X_b.shape[1])  # Start with zeros instead of random values
@@ -32,12 +39,29 @@ def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6)
     # Initialize cost history
     cost_history = []
     
+    # Feature scaling for better convergence
+    # Only scale the features, not the intercept column
+    if X_b.shape[1] > 1:
+        feature_means = np.mean(X_b[:, 1:], axis=0)
+        feature_stds = np.std(X_b[:, 1:], axis=0)
+        # Prevent division by zero
+        feature_stds = np.where(feature_stds == 0, 1, feature_stds)
+        
+        # Apply scaling to features (not to the intercept column)
+        X_b_scaled = X_b.copy()
+        X_b_scaled[:, 1:] = (X_b[:, 1:] - feature_means) / feature_stds
+    else:
+        X_b_scaled = X_b
+    
     # Gradient descent
     actual_iterations = 0
+    prev_cost = float('inf')
+    
     for i in range(n_iterations):
         actual_iterations += 1
+        
         # Calculate predictions
-        y_pred = X_b.dot(theta)
+        y_pred = X_b_scaled.dot(theta)
         
         # Calculate error
         error = y_pred - y
@@ -48,42 +72,76 @@ def gradient_descent(X, y, learning_rate=0.01, n_iterations=100, tolerance=1e-6)
         # Check for NaN or infinite values
         if np.isnan(cost) or np.isinf(cost) or cost > 1e10:
             print(f"Warning: Divergence detected at iteration {i}. Learning rate too high.")
-            break
+            # If we've already completed some iterations and have a cost history, 
+            # we can use the last good theta values
+            if i > 5 and len(cost_history) > 5:
+                break
+            else:
+                # Try reducing learning rate and restarting
+                return gradient_descent(X, y, learning_rate=learning_rate*0.1, n_iterations=n_iterations, 
+                                       tolerance=tolerance, polynomial_degree=polynomial_degree)
+        
+        # Check for divergence (cost increasing significantly)
+        if i > 0 and cost > prev_cost * 1.5 and i > 5:
+            print(f"Warning: Cost increasing at iteration {i}. Reducing learning rate.")
+            # Try again with a smaller learning rate
+            return gradient_descent(X, y, learning_rate=scaled_learning_rate*0.1, n_iterations=n_iterations, 
+                                   tolerance=tolerance, polynomial_degree=polynomial_degree)
             
         cost_history.append(float(cost))
+        prev_cost = cost
         
         # Calculate gradients
-        gradients = 2/X_b.shape[0] * X_b.T.dot(error)
+        gradients = 2/X_b_scaled.shape[0] * X_b_scaled.T.dot(error)
         
         # Clip gradients to prevent extreme values
-        max_grad = 10.0
+        max_grad = 10.0 / (polynomial_degree if polynomial_degree > 0 else 1)
         gradients = np.clip(gradients, -max_grad, max_grad)
         
-        # Store old theta for adaptive learning rate
-        theta_old = theta.copy()
-        
-        # Update parameters
-        theta = theta - learning_rate * gradients
+        # Update parameters with adaptive learning rate
+        theta = theta - scaled_learning_rate * gradients
         
         # Check for convergence
         if i > 0 and np.abs(cost_history[i] - cost_history[i-1]) < tolerance:
             print(f"Converged after {i+1} iterations")
             break
     
-    # Extract intercept and coefficient
+    # Extract intercept and coefficients
     intercept = theta[0]
-    coefficient = theta[1]
     
-    return coefficient, intercept, cost_history, actual_iterations
+    # If we scaled the features, we need to transform coefficients back
+    if X_b.shape[1] > 1:
+        # For each coefficient, apply the inverse scaling
+        coefficients = theta[1:] / feature_stds
+        
+        # Adjust intercept to account for mean-centered features
+        intercept = intercept - np.sum(coefficients * feature_means)
+    else:
+        coefficients = theta[1:]
+    
+    return coefficients, intercept, cost_history, actual_iterations
 
-def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
+def run_polynomial_regression(data, degree=1, alpha=0.01, iterations=100, random_state=42):
+    """
+    Runs polynomial regression of specified degree on the provided data
+    
+    Parameters:
+    data (dict): Dictionary with 'X' and 'y' keys containing the data
+    degree (int): Degree of the polynomial
+    alpha (float): Learning rate for gradient descent
+    iterations (int): Maximum number of iterations
+    random_state (int): Random seed for reproducibility
+    
+    Returns:
+    dict: Results of the regression including coefficients, metrics, and visualizations
+    """
     try:
         # Set random seed
         np.random.seed(random_state)
         
         # Debug information
         print(f"Received data: X={data['X'][:5]}... (length: {len(data['X'])}), y={data['y'][:5]}... (length: {len(data['y'])})")
-        print(f"Learning rate (alpha): {alpha}, Max iterations: {iterations}")
+        print(f"Polynomial degree: {degree}, Learning rate (alpha): {alpha}, Max iterations: {iterations}")
         
         # Convert to numpy arrays with validation
         try:
@@ -110,17 +168,27 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
             print("Warning: All X values are identical. Adding small noise for numerical stability.")
             X = X + np.random.normal(0, 0.01, X.shape)
         
+        # Transform features to polynomial features
+        poly = PolynomialFeatures(degree=degree, include_bias=False)
+        X_poly = poly.fit_transform(X)
+        
         # Train the model using gradient descent
-        coef, intercept, cost_history, actual_iterations = gradient_descent(
-            X, y, learning_rate=alpha, n_iterations=iterations + 1
+        coefficients, intercept, cost_history, actual_iterations = gradient_descent(
+            X_poly, y, learning_rate=alpha, n_iterations=iterations + 1, polynomial_degree=degree
         )
         
-        # Create model predictions
-        y_pred = coef * X.flatten() + intercept
-        
+        # Create model predictions for original data points
+        X_poly_pred = poly.transform(X)
+
+        # Approach 1: Use np.dot for matrix multiplication
+        y_pred = intercept + np.dot(X_poly_pred, coefficients)
+
+        # Ensure y_pred is a 1D array with same shape as y
+        y_pred = np.array(y_pred).flatten()
+
         # Calculate metrics
         mse = float(mean_squared_error(y, y_pred))
-        r2 = float(1 - np.sum((y - y_pred) ** 2) / np.sum((y - np.mean(y)) ** 2))
+        r2 = float(r2_score(y, y_pred))  # Use sklearn's r2_score for reliability
         
         # Generate visualization
         plt.figure(figsize=(10, 6))
@@ -128,15 +196,18 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
         # Plot data points
         plt.scatter(X, y, color='blue', label='Data points')
         
-        # Sort X values for line plot
+        # Update the curve calculation for visualization
+
+        # Generate smooth curve for polynomial regression
         X_line = np.linspace(X.min(), X.max(), 100).reshape(-1, 1)
-        y_line = coef * X_line.flatten() + intercept
+        X_line_poly = poly.transform(X_line)
+        y_line = intercept + np.dot(X_line_poly, coefficients)
         
-        # Plot regression line
-        plt.plot(X_line, y_line, color='red', linewidth=2, label='Regression line')
+        # Plot regression line/curve
+        plt.plot(X_line, y_line, color='red', linewidth=2, label=f'Degree {degree} polynomial')
         
         # Add title and labels
-        plt.title(f"Linear Regression with Gradient Descent (α={alpha:.4f}, iterations={actual_iterations})")
+        plt.title(f"Polynomial Regression (Degree {degree}, α={alpha:.4f}, iterations={actual_iterations})")
         plt.xlabel('X')
         plt.ylabel('y')
         plt.legend()
@@ -168,15 +239,23 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
         cost_plot_data = base64.b64encode(cost_buf.read()).decode('utf-8')
         plt.close()
         
+        # Create polynomial equation string
+        equation = f'y = {intercept:.4f}'
+        for i, coef in enumerate(coefficients):
+            power = i + 1
+            sign = '+' if coef >= 0 else '-'
+            equation += f' {sign} {abs(coef):.4f}x^{power}'
+        
         # Debug info
-        print(f"Model trained successfully: coef={coef}, intercept={intercept}")
+        print(f"Model trained successfully: coefficients={coefficients}, intercept={intercept}")
         print(f"Metrics: R2={r2}, MSE={mse}")
         print(f"Iterations used: {actual_iterations} out of {iterations} max")
         
         # Return results with explicit type conversion for all values
         result = {
-            'coefficient': float(coef),
+            'coefficients': [float(c) for c in coefficients],
             'intercept': float(intercept),
+            'degree': int(degree),
             'mse': float(mse),
             'r2': float(r2),
             'alpha': float(alpha),
@@ -186,7 +265,7 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
             'plot': plot_data,
             'cost_history': [float(c) for c in cost_history],
             'cost_history_plot': cost_plot_data,
-            'equation': f'y = {coef:.4f}x + {intercept:.4f}'
+            'equation': equation
         }
         
         # Verify the result structure before returning
@@ -197,7 +276,7 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
         # Provide detailed error information
         import traceback
         error_traceback = traceback.format_exc()
-        print(f"Error in Linear Regression model: {str(e)}")
+        print(f"Error in Polynomial Regression model: {str(e)}")
         print(f"Traceback: {error_traceback}")
         
         # Provide specific diagnosis for common issues
@@ -218,26 +297,40 @@ def run_linear_regression(data, alpha=0.01, iterations=100, random_state=42):
             }
         }
 
-def create_regression_plot(X, y, coef, intercept):
+def create_regression_plot(X, y, coefficients, intercept, degree):
+    """
+    Creates a visualization of the polynomial regression fit
+    
+    Parameters:
+    X (numpy.ndarray): Input features
+    y (numpy.ndarray): Target values
+    coefficients (numpy.ndarray): Polynomial coefficients
+    intercept (float): Intercept term
+    degree (int): Polynomial degree
+    
+    Returns:
+    str: Base64 encoded PNG image of the plot
+    """
     fig, ax = plt.subplots(figsize=(10, 6))
     
     # Plot data points
     ax.scatter(X, y, color='blue', alpha=0.6, label='Data Points')
     
-    # Sort X values for the line
-    sorted_indices = np.argsort(X)
-    sorted_X = X[sorted_indices]
+    # Create polynomial features transformer
+    poly = PolynomialFeatures(degree=degree, include_bias=False)
     
-    # Predict y values for the line
-    line_y = coef * sorted_X + intercept
+    # Generate smooth curve for plotting
+    X_range = np.linspace(min(X), max(X), 100).reshape(-1, 1)
+    X_poly = poly.fit_transform(X_range)
+    y_pred = intercept + np.dot(X_poly, coefficients)
     
-    # Plot regression line
-    ax.plot(sorted_X, line_y, color='red', linewidth=2, label=f'y = {coef:.2f}x + {intercept:.2f}')
+    # Plot regression line/curve
+    ax.plot(X_range, y_pred, color='red', linewidth=2, label=f'Polynomial (Degree {degree})')
     
     # Add labels and title
     ax.set_xlabel('X', fontsize=12, labelpad=10)
     ax.set_ylabel('y', fontsize=12, labelpad=10)
-    ax.set_title('Linear Regression', fontsize=14, pad=20)
+    ax.set_title(f'Polynomial Regression (Degree {degree})', fontsize=14, pad=20)
     ax.legend(loc='best')
     ax.grid(alpha=0.3)
     
@@ -251,7 +344,7 @@ def create_regression_plot(X, y, coef, intercept):
     plt.tight_layout(pad=2.0)
     
     # Convert plot to base64 string
-    buffer = io.BytesIO()  # Use io.BytesIO since we import io module
+    buffer = io.BytesIO()
     plt.savefig(buffer, format='png', dpi=100)
     plt.close(fig)
     buffer.seek(0)

@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { runLinearRegression, getLinearRegressionSampleData, checkHealth } from '../api';
+import { runPolynomialRegression, getPolynomialRegressionSampleData, checkHealth } from '../api';
 import './ModelPage.css';
 
-function LinReg() {
+function Reg() {
   const navigate = useNavigate();
   const [dataPairs, setDataPairs] = useState([{ x: '', y: '' }]);
   const [loading, setLoading] = useState(false);
@@ -15,6 +15,7 @@ function LinReg() {
   const [sampleLoading, setSampleLoading] = useState(false);
   const [alpha, setAlpha] = useState(0.01);
   const [iterations, setIterations] = useState(100);
+  const [degree, setDegree] = useState(1);  // New state for polynomial degree
   const [isHighAlpha, setIsHighAlpha] = useState(false);
   const [showSampleDataModal, setShowSampleDataModal] = useState(false);
   const [sampleCount, setSampleCount] = useState(30);
@@ -23,6 +24,7 @@ function LinReg() {
   // Canvas ref and state for interactive plotting
   const canvasRef = useRef(null);
   const [canvasDimensions] = useState({ width: 550, height: 400 });
+  
   // Updated scale to center the graph at the origin and set axes from -8 to 8
   const scale = {
     x: { min: -8, max: 8 },
@@ -61,7 +63,48 @@ function LinReg() {
       }));
   };
   
-  // Draw canvas with points and regression line
+  // Update drawRegressionLine function to handle polynomial curves
+  const drawRegressionLine = (ctx, canvas, coefficients, intercept, degree) => {
+    // Don't try to draw a curve if we don't have valid coefficients
+    if (!coefficients || !intercept) return;
+    
+    // Generate points for the curve
+    const numPoints = 100;
+    const xMin = scale.x.min;
+    const xMax = scale.x.max;
+    const xStep = (xMax - xMin) / (numPoints - 1);
+    
+    const points = [];
+    for (let i = 0; i < numPoints; i++) {
+      const x = xMin + i * xStep;
+      
+      // Calculate polynomial value
+      let y = intercept;
+      for (let j = 0; j < coefficients.length; j++) {
+        y += coefficients[j] * Math.pow(x, j + 1);
+      }
+      
+      // Convert to screen coordinates
+      const screenX = ((x - scale.x.min) / (scale.x.max - scale.x.min)) * canvas.width;
+      const screenY = canvas.height - ((y - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
+      
+      points.push({ x: screenX, y: screenY });
+    }
+    
+    // Draw the curve
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  };
+
+  // Update useEffect for drawing canvas
   useEffect(() => {
     if (!canvasRef.current) return;
     
@@ -80,9 +123,9 @@ function LinReg() {
     // Draw points
     drawPoints(ctx, canvas, points);
     
-    // Draw regression line if results exist
-    if (results && results.coefficient !== undefined && results.intercept !== undefined) {
-      drawRegressionLine(ctx, canvas, results.coefficient, results.intercept);
+    // Draw regression curve if results exist
+    if (results && results.coefficients && results.intercept !== undefined) {
+      drawRegressionLine(ctx, canvas, results.coefficients, results.intercept, results.degree || 1);
     }
     
     // Debug console logs
@@ -168,32 +211,6 @@ function LinReg() {
       ctx.lineWidth = 1;
       ctx.stroke();
     });
-  };
-
-  // Helper function to draw regression line
-  const drawRegressionLine = (ctx, canvas, coefficient, intercept) => {
-    // Don't try to draw a line if we don't have valid coefficient/intercept
-    if (coefficient === undefined || intercept === undefined) return;
-    
-    ctx.beginPath();
-    
-    // Calculate line endpoints in data coordinates
-    const x1 = scale.x.min;
-    const y1 = coefficient * x1 + intercept;
-    const x2 = scale.x.max;
-    const y2 = coefficient * x2 + intercept;
-    
-    // Convert to screen coordinates
-    const sx1 = 0;
-    const sy1 = canvas.height - ((y1 - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-    const sx2 = canvas.width;
-    const sy2 = canvas.height - ((y2 - scale.y.min) / (scale.y.max - scale.y.min)) * canvas.height;
-    
-    ctx.moveTo(sx1, sy1);
-    ctx.lineTo(sx2, sy2);
-    ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
-    ctx.lineWidth = 3;
-    ctx.stroke();
   };
 
   // Convert screen coordinates to data coordinates
@@ -284,7 +301,7 @@ function LinReg() {
     setError(null);
 
     try {
-      const sampleData = await getLinearRegressionSampleData(sampleCount, sampleNoise);
+      const sampleData = await getPolynomialRegressionSampleData(sampleCount, sampleNoise, degree);
 
       // Convert sample data into pairs
       const pairs = sampleData.X.map((x, index) => ({
@@ -327,11 +344,12 @@ function LinReg() {
         X: validPairs.map(pair => pair.x),
         y: validPairs.map(pair => pair.y),
         alpha: alpha,
-        iterations: iterations
+        iterations: iterations,
+        degree: degree  // Add polynomial degree
       };
 
       console.log('Calling API endpoint with data:', apiData);
-      const response = await runLinearRegression(apiData);
+      const response = await runPolynomialRegression(apiData);
       
       if (response.error) {
         throw new Error(response.error);
@@ -354,7 +372,7 @@ function LinReg() {
       ) {
         setError(
           `Error: Gradient descent failed to converge. This is likely due to a learning rate (${alpha.toFixed(4)}) that is too high. ` +
-          `Try reducing the learning rate to a value below 1.0.`
+          `Try reducing the learning rate or using a lower polynomial degree.`
         );
       } else {
         setError(`Error: ${errorMessage} Please try again.`);
@@ -511,6 +529,59 @@ function LinReg() {
     </div>
   );
 
+  // Add this in your JSX where appropriate (with the other sliders)
+  const degreeSlider = (
+    <div style={{ marginTop: '1.5rem' }}>
+      <label htmlFor="degree-slider" style={{ 
+        display: 'block', 
+        marginBottom: '0.5rem', 
+        fontWeight: '500', 
+        color: '#4b5563' 
+      }}>
+        Polynomial Degree: {degree}
+      </label>
+      <input
+        id="degree-slider"
+        type="range"
+        min="1"
+        max="5"
+        step="1"
+        value={degree}
+        onChange={(e) => setDegree(parseInt(e.target.value))}
+        style={{ width: '100%' }}
+      />
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        fontSize: '0.8rem', 
+        color: '#6b7280',
+        marginTop: '0.25rem'
+      }}>
+        <span>1 (Linear)</span>
+        <span>5 (Higher-order)</span>
+      </div>
+      
+      {degree > 3 && (
+        <div style={{
+          marginTop: '0.5rem',
+          padding: '0.5rem',
+          backgroundColor: '#FEF2F2',
+          borderRadius: '0.375rem',
+          borderLeft: '3px solid #EF4444',
+          color: '#B91C1C',
+          fontSize: '0.875rem'
+        }}>
+          <strong>Warning:</strong> Higher-degree polynomials may overfit the data.
+          Use with caution, especially with few data points.
+        </div>
+      )}
+    </div>
+  );
+
+  // Update the title and description
+  const pageTitle = "Polynomial Regression";
+  const pageDescription = "Polynomial Regression extends linear regression to fit an nth degree polynomial equation to data, modeling non-linear relationships.";
+
   return (
     <motion.div 
       className="model-page"
@@ -526,12 +597,11 @@ function LinReg() {
           </svg>
           <span style={{ marginLeft: '0.5rem' }}>Back to Home</span>
         </button>
-        <h1 className="model-title">Linear Regression</h1>
+        <h1 className="model-title">{pageTitle}</h1>
       </div>
 
       <p className="model-description">
-        Linear Regression is a supervised learning algorithm that models the relationship between 
-        a dependent variable and one or more independent variables using a linear equation.
+        {pageDescription}
         <button 
             onClick={() => navigate('/docs')} 
             style={{
@@ -747,8 +817,8 @@ function LinReg() {
               id="alpha-slider"
               type="range"
               min="0.0001"
-              max="0.12"
-              step="0.0001"
+              max="0.9"
+              step="0.0005"
               value={alpha}
               onChange={(e) => setAlpha(parseFloat(e.target.value))}
               style={{ width: '100%' }}
@@ -761,7 +831,7 @@ function LinReg() {
               marginTop: '0.25rem'
             }}>
               <span>0.0001 (Slow learning)</span>
-              <span>0.12 (Fast learning)</span>
+              <span>0.9 (Fast learning)</span>
             </div>
             
             {isHighAlpha && (
@@ -775,7 +845,7 @@ function LinReg() {
                 fontSize: '0.875rem'
               }}>
                 <strong>Warning:</strong> High learning rates may cause exploding gradients and divergence. 
-                Values below 0.1 are recommended for most datasets.
+                Values below 0.8 are recommended for most datasets.
               </div>
             )}
           </div>
@@ -794,7 +864,7 @@ function LinReg() {
               id="iterations-slider"
               type="range"
               min="1"
-              max="500"
+              max="1000"
               step="1"
               value={iterations} 
               onChange={(e) => setIterations(parseInt(e.target.value))}
@@ -808,9 +878,11 @@ function LinReg() {
               marginTop: '0.25rem'
             }}>
               <span>1 (Fast but might not converge)</span>
-              <span>500 (More accurate)</span>
+              <span>1000(More accurate)</span>
             </div>
           </div>
+          
+          {degreeSlider}
           
           <div style={{ marginTop: '1.5rem' }}>
             <button 
@@ -870,15 +942,17 @@ function LinReg() {
               }}>
                 <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>Model Equation</div>
                 <div style={{ fontWeight: '600', fontSize: '1.2rem' }}>
-                  {`y = ${results.coefficient !== undefined ? results.coefficient.toFixed(4) : '?'} × x + ${results.intercept !== undefined ? results.intercept.toFixed(4) : '?'}`}
+                  {`y = ${results.coefficients ? results.coefficients.map((coef, index) => `${coef.toFixed(4)}x^${index + 1}`).join(' + ') : '?'} + ${results.intercept !== undefined ? results.intercept.toFixed(4) : '?'}`}
                 </div>
               </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
                 <div style={{ padding: '1rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Coefficient</div>
+                  <div style={{ fontWeight: '500', color: '#6b7280', marginBottom: '0.25rem' }}>Coefficients</div>
                   <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
-                    {results.coefficient !== undefined ? results.coefficient.toFixed(4) : 'N/A'}
+                    {results.coefficients ? results.coefficients.map((coef, index) => (
+                      <div key={index}>{`x^${index + 1}: ${coef.toFixed(4)}`}</div>
+                    )) : 'N/A'}
                   </div>
                 </div>
                 
@@ -953,4 +1027,4 @@ function LinReg() {
   );
 }
 
-export default LinReg;
+export default Reg;
