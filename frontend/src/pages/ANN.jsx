@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 import { checkHealth } from '../api';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 function ANN() {
     const navigate = useNavigate();
@@ -22,16 +23,18 @@ function ANN() {
     const [sampleClusters, setSampleClusters] = useState(2);
     const [sampleVariance, setSampleVariance] = useState(0.5);
     const [decisionBoundary, setDecisionBoundary] = useState(null);
+    const [neuronVisualizations, setNeuronVisualizations] = useState({});
+    
     
     // Neural network architecture
     const [networkArchitecture, setNetworkArchitecture] = useState({
         hiddenLayers: [
-            { neurons: 5, activation: 'relu' },
-            { neurons: 3, activation: 'relu' }
+            { neurons: 8, activation: 'relu' },
+            { neurons: 8, activation: 'relu' }
         ],
-        learningRate: 0.01,
-        epochs: 100,
-        batchSize: 32,
+        learningRate: 0.005,
+        epochs: 200,
+        batchSize: 16,
         activation: 'relu',
         outputActivation: 'softmax'
     });
@@ -67,6 +70,22 @@ function ANN() {
     // Handle Neural Network layer changes
     const handleAddLayer = () => {
         const updatedLayers = [...networkArchitecture.hiddenLayers, { neurons: 5, activation: 'relu' }];
+        setNetworkArchitecture({ ...networkArchitecture, hiddenLayers: updatedLayers });
+    };
+
+
+    const handleAddLayerAt = (index) => {
+        const updatedLayers = [...networkArchitecture.hiddenLayers];
+        // Insert new layer at the specified index
+        updatedLayers.splice(index + 1, 0, { neurons: 5, activation: 'relu' });
+        setNetworkArchitecture({ ...networkArchitecture, hiddenLayers: updatedLayers });
+    };
+    
+    const handleRemoveLayerAt = (index) => {
+        if (networkArchitecture.hiddenLayers.length <= 1) return;
+        
+        const updatedLayers = [...networkArchitecture.hiddenLayers];
+        updatedLayers.splice(index, 1);
         setNetworkArchitecture({ ...networkArchitecture, hiddenLayers: updatedLayers });
     };
 
@@ -427,47 +446,6 @@ function ANN() {
         }
     };
 
-    const handleAddPair = () => {
-        setDataPairs([...dataPairs, { x: '', y: '', class: 0 }]);
-    };
-
-    const handleRemovePair = (index) => {
-        const newPairs = [...dataPairs];
-        newPairs.splice(index, 1);
-        
-        // Ensure there's always at least one row
-        if (newPairs.length === 0) {
-            newPairs.push({ x: '', y: '', class: 0 });
-        }
-        
-        setDataPairs(newPairs);
-    };
-
-    const handleInputChange = (index, field, value) => {
-        const newPairs = [...dataPairs];
-        
-        // Strip any non-numeric characters except decimal point and minus sign
-        if (field === 'x' || field === 'y') {
-          // Allow only numbers, decimal point, and minus sign at the beginning
-          value = value.replace(/[^0-9.-]/g, '');
-          
-          // Ensure only one decimal point
-          const parts = value.split('.');
-          if (parts.length > 2) {
-            value = parts[0] + '.' + parts.slice(1).join('');
-          }
-          
-          // Ensure minus sign is only at the beginning
-          if (value.indexOf('-') > 0) {
-            value = value.replace(/-/g, '');
-            value = '-' + value;
-          }
-        }
-        
-        newPairs[index][field] = value;
-        setDataPairs(newPairs);
-    };
-
     // Update the loadSampleData function to show the modal
     const loadSampleData = () => {
         setShowSampleDataModal(true);
@@ -573,8 +551,8 @@ function ANN() {
     
         setError(null);
         setLoading(true);
-        setPredictedPoints([]); // Reset predicted points
-        setResults(null); // Reset results before new request
+        setPredictedPoints([]);
+        setResults(null);
     
         try {
             // Prepare network architecture for the API
@@ -584,7 +562,7 @@ function ANN() {
                     activation: layer.activation
                 })),
                 learning_rate: networkArchitecture.learningRate,
-                epochs: networkArchitecture.epochs,
+                epochs: parseInt(networkArchitecture.epochs),
                 batch_size: networkArchitecture.batchSize,
                 activation: networkArchitecture.activation,
                 output_activation: networkArchitecture.outputActivation
@@ -612,6 +590,9 @@ function ANN() {
             // Handle the decision boundary image
             if (response.data.decision_boundary) {
                 setDecisionBoundary(response.data.decision_boundary);
+            }
+            if (response.data.neuron_visualizations) {
+                setNeuronVisualizations(response.data.neuron_visualizations);
             }
             
         } catch (err) {
@@ -1084,7 +1065,7 @@ function ANN() {
                                 backgroundColor: '#ffffff',
                                 boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
                                 width: '100%',
-                                height: 250
+                                height: 350
                             }}>
                                 <div style={{
                                     position: 'absolute',
@@ -1099,8 +1080,8 @@ function ANN() {
                                     {showNeuralNetwork && (
                                         <canvas
                                             ref={networkCanvasRef}
-                                            width={500}
-                                            height={250}
+                                            width={700}
+                                            height={350}
                                             style={{
                                                 width: '100%',
                                                 height: '100%'
@@ -1280,6 +1261,43 @@ function ANN() {
                                                         <option value="tanh">Tanh</option>
                                                     </select>
                                                 </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '0.25rem' }}>
+                                                    <button
+                                                        onClick={() => handleAddLayerAt(index)}
+                                                        title="Add layer after this one"
+                                                        style={{
+                                                            padding: '0.25rem',
+                                                            backgroundColor: '#e5e7eb',
+                                                            color: '#4b5563',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center'
+                                                        }}
+                                                    >
+                                                        <span style={{ fontSize: '1rem' }}>+</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleRemoveLayerAt(index)}
+                                                        disabled={networkArchitecture.hiddenLayers.length <= 1}
+                                                        title="Remove this layer"
+                                                        style={{
+                                                            padding: '0.25rem',
+                                                            backgroundColor: networkArchitecture.hiddenLayers.length <= 1 ? '#f3f4f6' : '#fee2e2',
+                                                            color: networkArchitecture.hiddenLayers.length <= 1 ? '#9ca3af' : '#b91c1c',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            cursor: networkArchitecture.hiddenLayers.length <= 1 ? 'not-allowed' : 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center'
+                                                        }}
+                                                    >
+                                                        <span style={{ fontSize: '1rem' }}>-</span>
+                                                    </button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -1317,6 +1335,36 @@ function ANN() {
                                     }}>
                                         <span>0.0001 (Slow)</span>
                                         <span>0.1 (Fast)</span>
+                                    </div>
+                                </div>
+
+                                {/* Batch Size */}
+                                <div style={{ marginBottom: '1rem' }}>
+                                    <label style={{ 
+                                        display: 'block', 
+                                        marginBottom: '0.5rem',
+                                        fontSize: '0.9rem',
+                                        color: '#4b5563' 
+                                    }}>
+                                        Batch Size: {networkArchitecture.batchSize}
+                                    </label>
+                                    <input 
+                                        type="range" 
+                                        min="1" 
+                                        max="64" 
+                                        step="1"
+                                        value={networkArchitecture.batchSize}
+                                        onChange={(e) => handleHyperparamChange('batchSize', e.target.value)}
+                                        style={{ width: '100%' }}
+                                    />
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        fontSize: '0.8rem', 
+                                        color: '#6b7280'
+                                    }}>
+                                        <span>1 (Slow, accurate)</span>
+                                        <span>64 (Fast, generalized)</span>
                                     </div>
                                 </div>
                                 
@@ -1542,7 +1590,7 @@ function ANN() {
                                             Accuracy: {(results.accuracy * 100).toFixed(2)}%
                                         </p>
                                         <p>Loss: {results.loss?.toFixed(4) || 'N/A'}</p>
-                                        <p>Epochs: {results.epochs || networkArchitecture.epochs}</p>
+                                        <p>Epochs: {results.epochs}</p>
                                     </div>
                                     
                                     {/* Decision Boundary Image */}
@@ -1556,6 +1604,28 @@ function ANN() {
                                                 alt="Decision Boundary"
                                                 style={{ width: '100%', maxWidth: '400px' }}
                                             />
+                                        </div>
+                                    )}
+
+                                    {results && results.model_info && (
+                                        <div style={{ marginTop: '1rem' }}>
+                                            <h4 style={{ marginBottom: '0.5rem' }}>Training History:</h4>
+                                            <div style={{ height: 200, width: '100%' }}>
+                                                <ResponsiveContainer>
+                                                    <LineChart
+                                                        data={results.model_info.training_history || []}
+                                                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                                                    >
+                                                        <CartesianGrid strokeDasharray="3 3" />
+                                                        <XAxis dataKey="epoch" />
+                                                        <YAxis />
+                                                        <Tooltip />
+                                                        <Legend />
+                                                        <Line type="monotone" dataKey="accuracy" stroke="#8884d8" name="Training Accuracy" />
+                                                        <Line type="monotone" dataKey="val_accuracy" stroke="#82ca9d" name="Validation Accuracy" />
+                                                    </LineChart>
+                                                </ResponsiveContainer>
+                                            </div>
                                         </div>
                                     )}
                                 </div>

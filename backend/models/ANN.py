@@ -195,6 +195,8 @@ class NeuralNetwork:
             'val_accuracy': []
         }
         
+        print("Training epochs:", epochs)
+
         # Training loop
         for epoch in range(epochs):
             # Shuffle data
@@ -317,7 +319,7 @@ def run_ann(data):
         # Extract data
         X_raw = data.get('X', [])
         y_raw = data.get('y', [])
-        architecture = data.get('architecture', {})
+        architecture = data.get('network_config', {})
         
         # Handle different input formats
         X = []
@@ -390,12 +392,27 @@ def run_ann(data):
         
         # Generate decision boundary visualization
         decision_boundary = generate_decision_boundary(model, X, y, scaler)
+
+        # Generate neuron feature visualizations
+        neuron_visualizations = generate_neuron_visualizations(model, scaler)
         
         # Collect training history
         train_loss = history['loss'][-1] if len(history['loss']) > 0 else 0
         train_accuracy = history['accuracy'][-1] if len(history['accuracy']) > 0 else 0
         val_loss = history['val_loss'][-1] if len(history['val_loss']) > 0 else 0
         val_accuracy = history['val_accuracy'][-1] if len(history['val_accuracy']) > 0 else 0
+
+        training_history = []
+        for i in range(len(history['loss'])):
+            epoch_data = {
+                'epoch': i+1,
+                'loss': float(history['loss'][i]),
+                'accuracy': float(history['accuracy'][i])
+            }
+            if len(history['val_loss']) > i:
+                epoch_data['val_loss'] = float(history['val_loss'][i])
+                epoch_data['val_accuracy'] = float(history['val_accuracy'][i])
+            training_history.append(epoch_data)
         
         return {
             'accuracy': float(accuracy),
@@ -411,11 +428,12 @@ def run_ann(data):
                 'train_loss': float(train_loss),
                 'val_accuracy': float(val_accuracy),
                 'val_loss': float(val_loss),
-                'classes': unique_classes.tolist()  # Add this to help with prediction
+                'classes': unique_classes.tolist(),
+                'training_history': training_history
             },
-            # Add model weights and biases for prediction
             'weights': [w.tolist() for w in model.weights],
-            'biases': [b.tolist() for b in model.biases]
+            'biases': [b.tolist() for b in model.biases],
+            'neuron_visualizations': neuron_visualizations
         }
     
     except Exception as e:
@@ -694,73 +712,81 @@ def generate_sample_data(dataset_type='blobs', n_samples=100, n_clusters=2, vari
         'y': y.tolist()
     }
 
-
-
-
+def generate_neuron_visualizations(model, scaler=None):
     """
-    Predict classes for new points using the model information from training.
+    Generate visualizations of what each neuron in the network has learned.
     
     Parameters:
-    model_results: Dictionary containing model information from training
-    points: List of points to predict
+    model: Trained neural network model
     scaler: Optional standardization scaler used during training
     
     Returns:
-    list: Predicted classes for each point
+    dict: Dictionary of base64 encoded images for each layer's neurons
     """
     try:
-        # Convert points to numpy array
-        X = np.array(points)
+        # Create a mesh grid covering our input space
+        x_min, x_max = -8, 8
+        y_min, y_max = -8, 8
+        h = 0.1  # Step size
+        xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
         
-        # Apply scaling if provided
+        # Flatten the mesh grid and reshape for forward pass
+        mesh_points = np.c_[xx.ravel(), yy.ravel()]
+        
+        # Apply the same scaling as during training if provided
         if scaler is not None:
-            X = scaler.transform(X)
-            
-        # Extract model architecture from the results
-        architecture = model_results.get('model_info', {})
-        hidden_layers = []
-        
-        # Reconstruct the layers from the model info
-        for i, neurons in enumerate(architecture.get('architecture', [])):
-            hidden_layers.append({
-                'neurons': neurons,
-                'activation': architecture.get('activations', [])[i] if i < len(architecture.get('activations', [])) else 'relu'
-            })
-            
-        output_activation = architecture.get('output_activation', 'sigmoid')
-        
-        # Create a new model with the same architecture
-        model = NeuralNetwork(
-            input_size=2,
-            hidden_layers=hidden_layers,
-            output_size=1 if output_activation == 'sigmoid' else len(np.unique(architecture.get('classes', [0, 1]))),
-            output_activation=output_activation
-        )
-        
-        # Set the weights and biases from the trained model
-        if 'weights' in model_results and 'biases' in model_results:
-            model.weights = model_results['weights']
-            model.biases = model_results['biases']
-            
-        # If no weights are provided, it means we need to predict based on decision boundary
-        # This is a simplified approach - 
-        # Check if we have a decision boundary
-        elif 'decision_boundary' in model_results:
-            # For testing only - return random predictions
-            # In real implementation, we would either need to save the model or reconstruct it
-            return [int(round(np.random.random())) for _ in range(len(points))]
+            mesh_points_scaled = scaler.transform(mesh_points)
         else:
-            # No trained model information available
-            raise ValueError("No model weights or decision boundary available for prediction")
+            mesh_points_scaled = mesh_points
         
-        # Make predictions
-        predictions = model.predict(X)
+        # Dictionary to store base64 visualizations
+        visualizations = {}
         
-        return predictions.tolist()
+        # Forward pass through each layer to get neuron activations
+        A = mesh_points_scaled
+        for layer_idx, (W, b) in enumerate(zip(model.weights, model.biases)):
+            # Linear transformation
+            Z = np.dot(A, W) + b
+            
+            # Activation function
+            if layer_idx < len(model.weights) - 1:  # Hidden layers
+                activation = model.activations[layer_idx]
+                A = model._activate(Z, activation)
+                
+                # Generate visualization for each neuron in this layer
+                neuron_images = []
+                for neuron_idx in range(Z.shape[1]):
+                    # Extract activation values for this neuron
+                    neuron_activation = A[:, neuron_idx].reshape(xx.shape)
+                    
+                    # Create normalized visualization
+                    plt.figure(figsize=(3, 3), dpi=100)
+                    plt.axis('off')
+                    
+                    # Use a perceptually uniform colormap
+                    vmin = np.percentile(neuron_activation, 5)
+                    vmax = np.percentile(neuron_activation, 95)
+                    plt.imshow(neuron_activation, cmap='viridis', origin='lower', 
+                               extent=[x_min, x_max, y_min, y_max], vmin=vmin, vmax=vmax)
+                    
+                    # Convert to base64 image
+                    buffer = BytesIO()
+                    plt.savefig(buffer, format='png', bbox_inches='tight', pad_inches=0)
+                    plt.close()
+                    buffer.seek(0)
+                    image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+                    neuron_images.append(image_base64)
+                
+                # Store this layer's neuron visualizations
+                visualizations[f'layer_{layer_idx}'] = neuron_images
+            else:
+                # Output layer - we skip visualization
+                continue
+            
+        return visualizations
     
     except Exception as e:
         import traceback
-        print(f"Error in prediction: {str(e)}")
+        print(f"Error generating neuron visualizations: {str(e)}")
         print(traceback.format_exc())
-        # Return default predictions (all zeros) in case of error
-        return [0] * len(points)
+        return {}
