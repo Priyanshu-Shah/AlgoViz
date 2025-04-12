@@ -742,47 +742,70 @@ def generate_neuron_visualizations(model, scaler=None):
         # Dictionary to store base64 visualizations
         visualizations = {}
         
-        # Forward pass through each layer to get neuron activations
-        A = mesh_points_scaled
-        for layer_idx, (W, b) in enumerate(zip(model.weights, model.biases)):
+        # Print debug info
+        print(f"Model weights shape: {[w.shape for w in model.weights]}")
+        print(f"Model has {len(model.weights)-1} hidden layers")
+        
+        # For each layer, we'll generate activations and visualize them
+        activations = [mesh_points_scaled]  # Start with input
+        
+        # IMPORTANT: First compute all activations through the entire network
+        # This ensures we have proper propagation through all layers
+        for layer_idx in range(len(model.weights)):
+            W = model.weights[layer_idx]
+            b = model.biases[layer_idx]
+            
             # Linear transformation
-            Z = np.dot(A, W) + b
+            Z = np.dot(activations[-1], W) + b
             
-            # Activation function
-            if layer_idx < len(model.weights) - 1:  # Hidden layers
-                activation = model.activations[layer_idx]
-                A = model._activate(Z, activation)
-                
-                # Generate visualization for each neuron in this layer
-                neuron_images = []
-                for neuron_idx in range(Z.shape[1]):
-                    # Extract activation values for this neuron
-                    neuron_activation = A[:, neuron_idx].reshape(xx.shape)
-                    
-                    # Create normalized visualization
-                    plt.figure(figsize=(3, 3), dpi=100)
-                    plt.axis('off')
-                    
-                    # Use a perceptually uniform colormap
-                    vmin = np.percentile(neuron_activation, 5)
-                    vmax = np.percentile(neuron_activation, 95)
-                    plt.imshow(neuron_activation, cmap='viridis', origin='lower', 
-                               extent=[x_min, x_max, y_min, y_max], vmin=vmin, vmax=vmax)
-                    
-                    # Convert to base64 image
-                    buffer = BytesIO()
-                    plt.savefig(buffer, format='png', bbox_inches='tight', pad_inches=0)
-                    plt.close()
-                    buffer.seek(0)
-                    image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
-                    neuron_images.append(image_base64)
-                
-                # Store this layer's neuron visualizations
-                visualizations[f'layer_{layer_idx}'] = neuron_images
-            else:
-                # Output layer - we skip visualization
-                continue
+            # Apply activation
+            activation_fn = model.activations[layer_idx]
+            A = model._activate(Z, activation_fn)
+            activations.append(A)
             
+            print(f"Computing activations for layer {layer_idx}: {A.shape}")
+            
+        # Now generate visualizations for each hidden layer
+        # We exclude the output layer (last one)
+        for layer_idx in range(len(model.weights) - 1):  # Exclude output layer
+            print(f"Generating visualizations for layer {layer_idx}")
+            
+            # Get the activations for this layer
+            A = activations[layer_idx + 1]  # +1 because activations[0] is the input
+            
+            # Generate visualization for each neuron in this layer
+            neuron_images = []
+            for neuron_idx in range(A.shape[1]):
+                # Extract activation values for this neuron
+                neuron_activation = A[:, neuron_idx].reshape(xx.shape)
+                
+                # Create normalized visualization
+                plt.figure(figsize=(3, 3), dpi=100)
+                plt.axis('off')
+                
+                # Use a perceptually uniform colormap
+                vmin = np.percentile(neuron_activation, 5)
+                vmax = np.percentile(neuron_activation, 95)
+                plt.imshow(neuron_activation, cmap='viridis', origin='lower', 
+                          extent=[x_min, x_max, y_min, y_max], vmin=vmin, vmax=vmax)
+                
+                # Convert to base64 image
+                buffer = BytesIO()
+                plt.savefig(buffer, format='png', bbox_inches='tight', pad_inches=0)
+                plt.close()
+                buffer.seek(0)
+                image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+                neuron_images.append(image_base64)
+            
+            # Store this layer's neuron visualizations
+            visualizations[f'layer_{layer_idx}'] = neuron_images
+            print(f"Added {len(neuron_images)} visualizations for layer_{layer_idx}")
+        
+        # Final debug info 
+        print(f"Final visualizations: {list(visualizations.keys())}")
+        for layer_key, images in visualizations.items():
+            print(f"Layer {layer_key}: {len(images)} neuron visualizations")
+        
         return visualizations
     
     except Exception as e:

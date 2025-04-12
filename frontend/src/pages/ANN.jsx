@@ -255,7 +255,6 @@ function ANN() {
         });
     };
 
-    // Draw neural network visualization
     const drawNeuralNetwork = () => {
         const canvas = networkCanvasRef.current;
         if (!canvas) return;
@@ -278,8 +277,221 @@ function ANN() {
         
         const numLayers = fullNetwork.length;
         const layerGap = width / (numLayers + 1);
+        
+        // Adjust vertical spacing based on max neurons
+        const maxNeurons = Math.max(...fullNetwork.map(layer => layer.neurons));
         const networkHeight = height * 0.8;
         const verticalOffset = height * 0.1;
+        
+        // Neuron size should be appropriate for the network
+        const neuronRadius = Math.min(18, Math.max(10, 24 - maxNeurons/2));
+        
+        // Draw connections first (so they appear behind neurons)
+        ctx.strokeStyle = '#d1d5db';
+        ctx.lineWidth = 1;
+        
+        
+        for (let i = 0; i < numLayers - 1; i++) {
+            const currentLayer = fullNetwork[i];
+            const nextLayer = fullNetwork[i + 1];
+            
+            const currentX = layerGap * (i + 1);
+            const nextX = layerGap * (i + 2);
+            
+            const currentNodeGap = networkHeight / (Math.max(currentLayer.neurons, 2) + 1);
+            const nextNodeGap = networkHeight / (Math.max(nextLayer.neurons, 2) + 1);
+            
+            for (let j = 0; j < currentLayer.neurons; j++) {
+                const currentY = verticalOffset + currentNodeGap * (j + 1);
+                
+                for (let k = 0; k < nextLayer.neurons; k++) {
+                    const nextY = verticalOffset + nextNodeGap * (k + 1);
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(currentX, currentY);
+                    ctx.lineTo(nextX, nextY);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        // Draw all neurons first (backgrounds only)
+        for (let i = 0; i < numLayers; i++) {
+            const layer = fullNetwork[i];
+            const layerX = layerGap * (i + 1);
+            const nodeGap = networkHeight / (Math.max(layer.neurons, 2) + 1);
+            
+            // Determine color based on activation function
+            let fillColor;
+            switch (layer.activation) {
+                case 'relu':
+                    fillColor = 'rgba(59, 130, 246, 0.7)';  // Blue
+                    break;
+                case 'tanh':
+                    fillColor = 'rgba(139, 92, 246, 0.7)';  // Purple
+                    break;
+                case 'sigmoid':
+                    fillColor = 'rgba(34, 197, 94, 0.7)';   // Green
+                    break;
+                case 'softmax':
+                    fillColor = 'rgba(156, 163, 175, 0.7)'; // Gray
+                    break;
+                case 'input':
+                    fillColor = 'rgba(249, 115, 22, 0.7)';  // Orange
+                    break;
+                default:
+                    fillColor = 'rgba(107, 114, 128, 0.7)'; // Gray
+            }
+            
+            // Draw each neuron background
+            for (let j = 0; j < layer.neurons; j++) {
+                const nodeY = verticalOffset + nodeGap * (j + 1);
+                
+                ctx.beginPath();
+                ctx.arc(layerX, nodeY, neuronRadius, 0, Math.PI * 2);
+                ctx.fillStyle = fillColor;
+                ctx.fill();
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Add input labels for input layer
+                if (i === 0) {
+                    ctx.fillStyle = '#000000';
+                    ctx.font = '14px Arial';
+                    ctx.textAlign = 'right';
+                    const label = j === 0 ? 'X₁' : 'X₂';
+                    ctx.fillText(label, layerX - 25, nodeY + 5);
+                }
+            }
+            
+            // Add layer labels
+            ctx.fillStyle = '#4b5563';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            
+            const labelText = i === 0 ? 'Input' : 
+                            i === numLayers - 1 ? 'Output' :
+                            `Hidden ${i}`;
+            
+            ctx.fillText(labelText, layerX, height - 30);
+            
+            // Add activation name for hidden and output layers
+            if (i > 0) {
+                ctx.font = '12px Arial';
+                ctx.fillText(layer.activation, layerX, height - 15);
+            }
+        }
+        
+        // Now load and draw the visualization images separately
+        // First, preload all images
+        const imagePromises = [];
+        const imageInfos = [];
+
+        console.log("Drawing network with visualizations:", neuronVisualizations);
+        console.log("Full network structure:", fullNetwork);
+        
+        for (let i = 1; i < numLayers - 1; i++) {
+            const layer = fullNetwork[i];
+            const layerX = layerGap * (i + 1);
+            const nodeGap = networkHeight / (Math.max(layer.neurons, 2) + 1);
+
+            // Debug per layer
+            const layerKey = `layer_${i-1}`;
+            console.log(`Processing layer ${i} (key: ${layerKey}), neurons: ${layer.neurons}`);
+            
+            if (neuronVisualizations[layerKey]) {
+                console.log(`Found visualizations for layer ${layerKey}: ${neuronVisualizations[layerKey].length} items`);
+            } else {
+                console.log(`No visualizations found for layer ${layerKey}`);
+            }
+            
+            for (let j = 0; j < layer.neurons; j++) {
+                const nodeY = verticalOffset + nodeGap * (j + 1);
+                const layerKey = `layer_${i-1}`;
+                
+                if (neuronVisualizations[layerKey] && 
+                    neuronVisualizations[layerKey][j]) {
+                    const imageData = neuronVisualizations[layerKey][j];
+                    
+                    if (imageData) {
+                        console.log(`Loading image for layer ${layerKey}, neuron ${j}`);
+                        const img = new Image();
+                        const promise = new Promise(resolve => {
+                            img.onload = () => {
+                                console.log(`Image loaded for layer ${layerKey}, neuron ${j}`);
+                                resolve();
+                            };
+                            img.onerror = () => {
+                                console.error(`Failed to load image for layer ${layerKey}, neuron ${j}`);
+                                resolve(); // Resolve even on error to continue
+                            };
+                        });
+                        
+                        imagePromises.push(promise);
+                        imageInfos.push({
+                            img,
+                            x: layerX,
+                            y: nodeY,
+                            radius: neuronRadius - 2
+                        });
+                        
+                        img.src = `data:image/png;base64,${imageData}`;
+                    }
+                }
+            }
+        }
+        
+        // Wait for all images to load, then draw them
+        Promise.all(imagePromises).then(() => {
+            imageInfos.forEach(info => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(info.x, info.y, info.radius, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.drawImage(
+                    info.img,
+                    info.x - info.radius, 
+                    info.y - info.radius,
+                    info.radius * 2,
+                    info.radius * 2
+                );
+                ctx.restore();
+            });
+        });
+    };
+
+    // Update the drawNeuralNetworkWithData function
+    const drawNeuralNetworkWithData = (visualizationData) => {
+        const canvas = networkCanvasRef.current;
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        
+        // Create full network structure including input and output layers
+        const fullNetwork = [
+            { neurons: 2, activation: 'input' },  // Input layer: x, y coordinates
+            ...networkArchitecture.hiddenLayers,
+            { neurons: 3, activation: networkArchitecture.outputActivation }  // Output layer with 3 neurons
+        ];
+        
+        const numLayers = fullNetwork.length;
+        const layerGap = width / (numLayers + 1);
+        
+        // Adjust vertical spacing based on max neurons
+        const maxNeurons = Math.max(...fullNetwork.map(layer => layer.neurons));
+        const networkHeight = height * 0.8;
+        const verticalOffset = height * 0.1;
+        
+        // Neuron size should be appropriate for the network
+        const neuronRadius = Math.min(18, Math.max(10, 24 - maxNeurons/2));
         
         // Draw connections first (so they appear behind neurons)
         ctx.strokeStyle = '#d1d5db';
@@ -308,8 +520,20 @@ function ANN() {
                 }
             }
         }
+
+        // Create layer mapping for visualizations
+        const layerMapping = {};
+        Object.keys(visualizationData).forEach(backendKey => {
+            // Extract the layer index from keys like 'layer_0', 'layer_1', etc.
+            const layerIndex = parseInt(backendKey.split('_')[1]);
+            // Frontend layer index is offset by 1 because of input layer
+            const frontendIndex = layerIndex + 1;
+            layerMapping[frontendIndex] = backendKey;
+            
+            console.log(`Mapping frontend layer ${frontendIndex} to backend key ${backendKey}`);
+        });
         
-        // Draw neurons
+        // Draw all neurons (input, hidden, and output layers)
         for (let i = 0; i < numLayers; i++) {
             const layer = fullNetwork[i];
             const layerX = layerGap * (i + 1);
@@ -327,6 +551,9 @@ function ANN() {
                 case 'sigmoid':
                     fillColor = 'rgba(34, 197, 94, 0.7)';   // Green
                     break;
+                case 'softmax':
+                    fillColor = 'rgba(156, 163, 175, 0.7)'; // Gray
+                    break;
                 case 'input':
                     fillColor = 'rgba(249, 115, 22, 0.7)';  // Orange
                     break;
@@ -338,29 +565,60 @@ function ANN() {
             for (let j = 0; j < layer.neurons; j++) {
                 const nodeY = verticalOffset + nodeGap * (j + 1);
                 
+                // First draw the basic neuron circle (for all layers)
                 ctx.beginPath();
-                ctx.arc(layerX, nodeY, 12, 0, Math.PI * 2);
+                ctx.arc(layerX, nodeY, neuronRadius, 0, Math.PI * 2);
                 ctx.fillStyle = fillColor;
                 ctx.fill();
                 ctx.strokeStyle = '#000000';
                 ctx.lineWidth = 1;
                 ctx.stroke();
+                
+                // Add input labels for input layer
+                if (i === 0) {
+                    ctx.fillStyle = '#000000';
+                    ctx.font = '14px Arial';
+                    ctx.textAlign = 'right';
+                    const label = j === 0 ? 'X₁' : 'X₂';
+                    ctx.fillText(label, layerX - 25, nodeY + 5);
+                }
+                
+                // Now add visualizations only for hidden layer neurons
+                if (i > 0 && i < numLayers - 1) {
+                    // Find the corresponding backend layer key for this frontend layer
+                    const backendKey = layerMapping[i] || `layer_${i-1}`;
+                    
+                    // Fallback to first layer's visualizations if this layer has no visualizations
+                    const firstLayerKey = Object.keys(visualizationData)[0];
+                    const layerData = visualizationData[backendKey] || visualizationData[firstLayerKey];
+                    
+                    if (layerData && layerData.length > 0) {
+                        // Use modulo to handle mismatches in neuron count
+                        const vizIndex = j % layerData.length;
+                        const imageData = layerData[vizIndex];
+                        
+                        if (imageData) {
+                            drawNeuronWithVisualization(ctx, layerX, nodeY, neuronRadius, imageData);
+                        }
+                    }
+                }
             }
             
-            // Add layer labels
+            // Add layer labels for all layers
             ctx.fillStyle = '#4b5563';
-            ctx.font = '12px Inter, sans-serif';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
             
             const labelText = i === 0 ? 'Input' : 
-                              i === numLayers - 1 ? 'Output' :
-                              `Hidden ${i}`;
+                            i === numLayers - 1 ? 'Output' :
+                            `Hidden ${i}`;
             
-            ctx.textAlign = 'center';
-            ctx.fillText(labelText, layerX, height - 10);
+            ctx.fillText(labelText, layerX, height - 30);
             
             // Add activation name for hidden and output layers
             if (i > 0) {
-                ctx.fillText(layer.activation, layerX, height - 25);
+                ctx.font = '12px Arial';
+                ctx.fillText(layer.activation, layerX, height - 15);
             }
         }
     };
@@ -381,6 +639,29 @@ function ANN() {
         const dataY = scale.y.min + ((canvas.height - y) / canvas.height) * (scale.y.max - scale.y.min);
         
         return { x: dataX, y: dataY };
+    };
+
+    // Helper function to draw a neuron with its visualization
+    const drawNeuronWithVisualization = (ctx, x, y, radius, imageData) => {
+        const img = new Image();
+        img.onload = () => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, radius - 2, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.drawImage(
+                img,
+                x - (radius - 2), 
+                y - (radius - 2),
+                (radius - 2) * 2,
+                (radius - 2) * 2
+            );
+            ctx.restore();
+        };
+        img.onerror = () => {
+            console.error("Failed to load neuron visualization image");
+        };
+        img.src = `data:image/png;base64,${imageData}`;
     };
 
     // Modify the useEffect for canvas drawing
@@ -583,16 +864,41 @@ function ANN() {
             }
     
             console.log('Results state set to:', response.data);
+            console.log('Network architecture:', networkArchitecture.hiddenLayers);
             
-            // Handle response
-            setResults(response.data);
-            
-            // Handle the decision boundary image
-            if (response.data.decision_boundary) {
-                setDecisionBoundary(response.data.decision_boundary);
-            }
             if (response.data.neuron_visualizations) {
-                setNeuronVisualizations(response.data.neuron_visualizations);
+                // Store visualization data directly without waiting for state update
+                const vizData = response.data.neuron_visualizations;
+                console.log("Received neuron visualizations:", vizData);
+                
+                // Log each layer's neuron count
+                Object.keys(vizData).forEach(layerKey => {
+                    console.log(`Layer ${layerKey} has ${vizData[layerKey].length} neurons`);
+                });
+                
+                // Set the state
+                setNeuronVisualizations(vizData);
+                
+                // Update results after getting visualizations
+                setResults(response.data);
+                
+                // Set decision boundary if available
+                if (response.data.decision_boundary) {
+                    setDecisionBoundary(response.data.decision_boundary);
+                }
+                
+                // Force redraw after state updates with the actual visualization data directly
+                // This avoids race conditions with state updates
+                setTimeout(() => {
+                    drawNeuralNetworkWithData(vizData);
+                }, 500);
+            } else {
+                console.log("No neuron visualizations received");
+                setResults(response.data);
+                
+                if (response.data.decision_boundary) {
+                    setDecisionBoundary(response.data.decision_boundary);
+                }
             }
             
         } catch (err) {
@@ -869,803 +1175,776 @@ function ANN() {
         </div>
     );
 
-        return (
-            <motion.div 
-                className="model-page"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5 }}
-            >
-                {showSampleDataModal && <SampleDataModal />}
-                
-                <div className="model-header">
-                    <button className="back-button" onClick={() => navigate('/')}>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M19 12H5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <path d="M12 19L5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                        </svg>
-                        <span style={{ marginLeft: '0.5rem' }}>Back to Home</span>
-                    </button>
-                    <h1 className="model-title">Neural Network</h1>
+    return (
+        <motion.div 
+            className="model-page"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5 }}
+        >
+            {showSampleDataModal && <SampleDataModal />}
+            
+            <div className="model-header">
+                <button className="back-button" onClick={() => navigate('/')}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M19 12H5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M12 19L5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                    <span style={{ marginLeft: '0.5rem' }}>Back to Home</span>
+                </button>
+                <h1 className="model-title">Neural Network</h1>
+            </div>
+
+            <p className="model-description">
+                Artificial Neural Networks are computing systems inspired by biological neural networks. They can learn to perform tasks by considering examples, without being explicitly programmed.
+                <button 
+                    onClick={() => navigate('/docs')} 
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#3b82f6',
+                        cursor: 'pointer',
+                        marginLeft: '8px',
+                        padding: '0',
+                        display: 'inline-flex',
+                        alignItems: 'center'
+                    }}
+                    title="More information"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                    </svg>
+                </button>
+                </p>
+
+            {backendStatus === "disconnected" && (
+                <div className="backend-status error">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span>
+                        Backend service is not responding. Please make sure the Flask server is running on port 5000.
+                    </span>
                 </div>
+            )}
 
-                <p className="model-description">
-                    Artificial Neural Networks are computing systems inspired by biological neural networks. They can learn to perform tasks by considering examples, without being explicitly programmed.
-                    <button 
-                        onClick={() => navigate('/docs')} 
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#3b82f6',
-                            cursor: 'pointer',
-                            marginLeft: '8px',
-                            padding: '0',
-                            display: 'inline-flex',
-                            alignItems: 'center'
-                        }}
-                        title="More information"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="16" x2="12" y2="12"></line>
-                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                        </svg>
-                    </button>
-                  </p>
-
-                {backendStatus === "disconnected" && (
-                    <div className="backend-status error">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                        </svg>
-                        <span>
-                            Backend service is not responding. Please make sure the Flask server is running on port 5000.
-                        </span>
-                    </div>
-                )}
-
-                <div className="content-container" style={{ 
+            <div className="content-container" style={{ 
+                width: '100%',
+                maxWidth: '100%',
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column'
+            }}>
+                <div style={{ 
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                    gap: '1.5rem',
                     width: '100%',
-                    maxWidth: '100%',
-                    boxSizing: 'border-box',
-                    display: 'flex',
-                    flexDirection: 'column'
+                    marginBottom: '1.5rem'
                 }}>
+                    {/* Left column: Interactive Plot and Neural Network Visualization */}
                     <div style={{ 
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                        gap: '1.5rem',
                         width: '100%',
-                        marginBottom: '1.5rem'
+                        gridColumn: '1 / 2',
+                        gridRow: '1 / 2',
+                        display: 'flex',
+                        flexDirection: 'column'
                     }}>
-                        {/* Left column: Interactive Plot and Neural Network Visualization */}
+                        <div className="section-header">
+                            <h2 className="section-title">Interactive Neural Network</h2>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button 
+                                    className="sample-data-button" 
+                                    onClick={loadSampleData}
+                                    disabled={sampleLoading}
+                                >
+                                    {sampleLoading ? 'Loading...' : 'Load Sample Data'}
+                                </button>
+                                <button 
+                                    className="sample-data-button" 
+                                    onClick={resetData}
+                                    style={{
+                                        backgroundColor: '#fee2e2',
+                                        color: '#b91c1c'
+                                    }}
+                                >
+                                    Reset Data
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {error && <div className="error-message">{error}</div>}
+
+                        <div style={{ marginBottom: '1rem' }}>
+                            <p style={{ color: '#4b5563', marginBottom: '0.5rem', lineHeight: '1.5' }}>
+                                Click on the graph below to add data points. Current mode: <strong>{interactionMode === 'train' ? 'Training' : 'Testing'}</strong>
+                            </p>
+                        </div>
+                        
+                        {/* Interactive Plot */}
                         <div style={{ 
+                            marginBottom: '1rem',
+                            border: '1px solid #e5e7eb', 
+                            borderRadius: '0.75rem', 
+                            overflow: 'hidden',
+                            position: 'relative',
+                            backgroundColor: '#f9fafb',
+                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
                             width: '100%',
-                            gridColumn: '1 / 2',
-                            gridRow: '1 / 2',
-                            display: 'flex',
-                            flexDirection: 'column'
+                            height: '0',
+                            paddingBottom: '100%' 
                         }}>
-                            <div className="section-header">
-                                <h2 className="section-title">Interactive Neural Network</h2>
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                    <button 
-                                        className="sample-data-button" 
-                                        onClick={loadSampleData}
-                                        disabled={sampleLoading}
-                                    >
-                                        {sampleLoading ? 'Loading...' : 'Load Sample Data'}
-                                    </button>
-                                    <button 
-                                        className="sample-data-button" 
-                                        onClick={resetData}
-                                        style={{
-                                            backgroundColor: '#fee2e2',
-                                            color: '#b91c1c'
-                                        }}
-                                    >
-                                        Reset Data
-                                    </button>
+                            <div style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0
+                            }}>
+                                <canvas 
+                                    ref={canvasRef}
+                                    width={canvasDimensions.width}
+                                    height={canvasDimensions.height}
+                                    onClick={handleCanvasClick}
+                                    style={{ 
+                                        display: 'block', 
+                                        cursor: 'crosshair',
+                                        width: '100%',
+                                        height: '100%'
+                                    }}
+                                />
+                            </div>
+                            
+                            {/* Click overlay hint */}
+                            <div style={{
+                                position: 'absolute',
+                                bottom: '10px',
+                                right: '10px',
+                                padding: '4px 8px',
+                                backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                                borderRadius: '4px',
+                                fontSize: '0.8rem',
+                                color: '#4b5563',
+                                pointerEvents: 'none'
+                            }}>
+                                Click to add {interactionMode === 'train' ? 'training' : 'testing'} point
+                            </div>
+                        </div>
+                        
+                        {/* Statistics */}
+                        <div style={{ 
+                            marginTop: '0.5rem',
+                            marginBottom: '1rem',
+                            backgroundColor: '#f9fafb', 
+                            padding: '1rem', 
+                            borderRadius: '0.5rem',
+                            border: '1px solid #e5e7eb',
+                            width: '100%'
+                        }}>
+                            <p style={{ fontWeight: '500', marginBottom: '0.5rem', color: '#4b5563' }}>
+                                Dataset Statistics:
+                            </p>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                                <div>
+                                    <strong>Training Points:</strong> {getValidPoints().length}
+                                </div>
+                                <div>
+                                    <strong>Points to Predict:</strong> {predictedPoints.length}
+                                </div>
+                                <div>
+                                    <strong>Classes:</strong> 3
                                 </div>
                             </div>
-                            
-                            {error && <div className="error-message">{error}</div>}
-
-                            <div style={{ marginBottom: '1rem' }}>
-                                <p style={{ color: '#4b5563', marginBottom: '0.5rem', lineHeight: '1.5' }}>
-                                    Click on the graph below to add data points. Current mode: <strong>{interactionMode === 'train' ? 'Training' : 'Testing'}</strong>
-                                </p>
-                            </div>
-                            
-                            {/* Interactive Plot */}
-                            <div style={{ 
-                                marginBottom: '1rem',
-                                border: '1px solid #e5e7eb', 
-                                borderRadius: '0.75rem', 
-                                overflow: 'hidden',
-                                position: 'relative',
-                                backgroundColor: '#f9fafb',
-                                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
-                                width: '100%',
-                                height: '0',
-                                paddingBottom: '100%' 
+                        </div>
+                        
+                        {/* Neural Network Visualization */}
+                        <div style={{
+                            position: 'relative',
+                            marginBottom: '1rem',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '0.75rem',
+                            overflow: 'hidden',
+                            backgroundColor: '#ffffff',
+                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                            width: '100%',
+                            height: 400
+                        }}>
+                            <div style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center'
                             }}>
-                                <div style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0
-                                }}>
-                                    <canvas 
-                                        ref={canvasRef}
-                                        width={canvasDimensions.width}
-                                        height={canvasDimensions.height}
-                                        onClick={handleCanvasClick}
-                                        style={{ 
-                                            display: 'block', 
-                                            cursor: 'crosshair',
+                                {showNeuralNetwork && (
+                                    <canvas
+                                        ref={networkCanvasRef}
+                                        width={800}
+                                        height={400}
+                                        style={{
                                             width: '100%',
                                             height: '100%'
                                         }}
                                     />
-                                </div>
-                                
-                                {/* Click overlay hint */}
+                                )}
+                            </div>
+                            {showNeuralNetwork && (
                                 <div style={{
                                     position: 'absolute',
                                     bottom: '10px',
-                                    right: '10px',
-                                    padding: '4px 8px',
-                                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                                    left: '10px',
+                                    padding: '8px',
+                                    background: 'rgba(255, 255, 255, 0.8)',
                                     borderRadius: '4px',
                                     fontSize: '0.8rem',
-                                    color: '#4b5563',
-                                    pointerEvents: 'none'
+                                    color: '#4b5563'
                                 }}>
-                                    Click to add {interactionMode === 'train' ? 'training' : 'testing'} point
-                                </div>
-                            </div>
-                            
-                            {/* Statistics */}
-                            <div style={{ 
-                                marginTop: '0.5rem',
-                                marginBottom: '1rem',
-                                backgroundColor: '#f9fafb', 
-                                padding: '1rem', 
-                                borderRadius: '0.5rem',
-                                border: '1px solid #e5e7eb',
-                                width: '100%'
-                            }}>
-                                <p style={{ fontWeight: '500', marginBottom: '0.5rem', color: '#4b5563' }}>
-                                    Dataset Statistics:
-                                </p>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-                                    <div>
-                                        <strong>Training Points:</strong> {getValidPoints().length}
-                                    </div>
-                                    <div>
-                                        <strong>Points to Predict:</strong> {predictedPoints.length}
-                                    </div>
-                                    <div>
-                                        <strong>Classes:</strong> 3
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {/* Neural Network Visualization */}
-                            <div style={{
-                                position: 'relative',
-                                marginBottom: '1rem',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '0.75rem',
-                                overflow: 'hidden',
-                                backgroundColor: '#ffffff',
-                                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
-                                width: '100%',
-                                height: 350
-                            }}>
-                                <div style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    display: 'flex',
-                                    justifyContent: 'center',
-                                    alignItems: 'center'
-                                }}>
-                                    {showNeuralNetwork && (
-                                        <canvas
-                                            ref={networkCanvasRef}
-                                            width={700}
-                                            height={350}
-                                            style={{
-                                                width: '100%',
-                                                height: '100%'
-                                            }}
-                                        />
-                                    )}
-                                    
-                                    {!showNeuralNetwork && (
-                                        <div style={{ textAlign: 'center' }}>
-                                            <p>Neural network visualization is hidden</p>
-                                            <button
-                                                onClick={() => setShowNeuralNetwork(true)}
-                                                style={{
-                                                    padding: '0.5rem 1rem',
-                                                    backgroundColor: '#3b82f6',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '0.5rem',
-                                                    cursor: 'pointer',
-                                                    marginTop: '1rem'
-                                                }}
-                                            >
-                                                Show Network
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                                
-                                {showNeuralNetwork && (
-                                    <div style={{
-                                        position: 'absolute',
-                                        top: '10px',
-                                        right: '10px'
-                                    }}>
-                                        <button
-                                            onClick={() => setShowNeuralNetwork(false)}
-                                            style={{
-                                                padding: '4px 8px',
-                                                backgroundColor: '#f3f4f6',
-                                                color: '#4b5563',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                fontSize: '0.8rem',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            Hide
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        
-                        {/* Right column: Controls and info boxes */}
-                        <div style={{ 
-                            width: '100%',
-                            gridColumn: '2 / 3',
-                            gridRow: '1 / 2',
-                            display: 'flex',
-                            flexDirection: 'column'
-                        }}>
-                            <h2 className="section-title">Controls & Results</h2>
-                            
-                            {/* Network Architecture Controls */}
-                            <div style={{ 
-                                marginBottom: '1.5rem', 
-                                backgroundColor: 'white', 
-                                padding: '1.5rem', 
-                                borderRadius: '6px', 
-                                border: '1px solid #e5e7eb',
-                                width: '100%'
-                            }}>
-                                <h3 style={{ marginBottom: '1.25rem', fontSize: '1.1rem', fontWeight: '500' }}>Network Architecture</h3>
-                                
-                                {/* Hidden Layer Controls */}
-                                <div style={{ marginBottom: '1.5rem' }}>
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        marginBottom: '0.75rem'
-                                    }}>
-                                        <label style={{ fontWeight: '500', color: '#4b5563' }}>
-                                            Hidden Layers
-                                        </label>
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            <button
-                                                onClick={handleAddLayer}
-                                                style={{
-                                                    padding: '0.25rem 0.5rem',
-                                                    backgroundColor: '#f3f4f6',
-                                                    color: '#4b5563',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    fontSize: '0.9rem',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                + Add
-                                            </button>
-                                            <button
-                                                onClick={handleRemoveLayer}
-                                                disabled={networkArchitecture.hiddenLayers.length <= 1}
-                                                style={{
-                                                    padding: '0.25rem 0.5rem',
-                                                    backgroundColor: networkArchitecture.hiddenLayers.length <= 1 ? '#f3f4f6' : '#fee2e2',
-                                                    color: networkArchitecture.hiddenLayers.length <= 1 ? '#9ca3af' : '#b91c1c',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    fontSize: '0.9rem',
-                                                    cursor: networkArchitecture.hiddenLayers.length <= 1 ? 'not-allowed' : 'pointer'
-                                                }}
-                                            >
-                                                - Remove
-                                            </button>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Layer configuration UI */}
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        flexDirection: 'column',
-                                        gap: '0.75rem',
-                                        maxHeight: '200px',
-                                        overflowY: 'auto',
-                                        padding: '0.5rem',
-                                        border: '1px solid #e5e7eb',
-                                        borderRadius: '0.5rem',
-                                        backgroundColor: '#f9fafb'
-                                    }}>
-                                        {networkArchitecture.hiddenLayers.map((layer, index) => (
-                                            <div 
-                                                key={index} 
-                                                style={{ 
-                                                    display: 'flex', 
-                                                    gap: '0.75rem',
-                                                    padding: '0.5rem',
-                                                    backgroundColor: 'white',
-                                                    border: '1px solid #e5e7eb',
-                                                    borderRadius: '0.5rem'
-                                                }}
-                                            >
-                                                <div style={{ flex: 1 }}>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.25rem', color: '#6b7280' }}>
-                                                        Neurons
-                                                    </label>
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="20"
-                                                        value={layer.neurons}
-                                                        onChange={(e) => handleLayerChange(index, 'neurons', e.target.value)}
-                                                        style={{
-                                                            width: '100%',
-                                                            padding: '0.25rem 0.5rem',
-                                                            border: '1px solid #d1d5db',
-                                                            borderRadius: '0.25rem'
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div style={{ flex: 2 }}>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.25rem', color: '#6b7280' }}>
-                                                        Activation
-                                                    </label>
-                                                    <select
-                                                        value={layer.activation}
-                                                        onChange={(e) => handleLayerChange(index, 'activation', e.target.value)}
-                                                        style={{
-                                                            width: '100%',
-                                                            padding: '0.25rem 0.5rem',
-                                                            border: '1px solid #d1d5db',
-                                                            borderRadius: '0.25rem'
-                                                        }}
-                                                    >
-                                                        <option value="relu">ReLU</option>
-                                                        <option value="sigmoid">Sigmoid</option>
-                                                        <option value="tanh">Tanh</option>
-                                                    </select>
-                                                </div>
-                                                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '0.25rem' }}>
-                                                    <button
-                                                        onClick={() => handleAddLayerAt(index)}
-                                                        title="Add layer after this one"
-                                                        style={{
-                                                            padding: '0.25rem',
-                                                            backgroundColor: '#e5e7eb',
-                                                            color: '#4b5563',
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center'
-                                                        }}
-                                                    >
-                                                        <span style={{ fontSize: '1rem' }}>+</span>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleRemoveLayerAt(index)}
-                                                        disabled={networkArchitecture.hiddenLayers.length <= 1}
-                                                        title="Remove this layer"
-                                                        style={{
-                                                            padding: '0.25rem',
-                                                            backgroundColor: networkArchitecture.hiddenLayers.length <= 1 ? '#f3f4f6' : '#fee2e2',
-                                                            color: networkArchitecture.hiddenLayers.length <= 1 ? '#9ca3af' : '#b91c1c',
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            cursor: networkArchitecture.hiddenLayers.length <= 1 ? 'not-allowed' : 'pointer',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center'
-                                                        }}
-                                                    >
-                                                        <span style={{ fontSize: '1rem' }}>-</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                
-                                {/* Training Parameters */}
-                                <h4 style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: '500', color: '#4b5563' }}>
-                                    Training Parameters
-                                </h4>
-                                
-                                {/* Learning Rate */}
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label style={{ 
-                                        display: 'block', 
-                                        marginBottom: '0.5rem', 
-                                        fontSize: '0.9rem',
-                                        color: '#4b5563' 
-                                    }}>
-                                        Learning Rate: {networkArchitecture.learningRate}
-                                    </label>
-                                    <input 
-                                        type="range" 
-                                        min="0.0001" 
-                                        max="0.1" 
-                                        step="0.001"
-                                        value={networkArchitecture.learningRate}
-                                        onChange={(e) => handleHyperparamChange('learningRate', e.target.value)}
-                                        style={{ width: '100%' }}
-                                    />
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        fontSize: '0.8rem', 
-                                        color: '#6b7280'
-                                    }}>
-                                        <span>0.0001 (Slow)</span>
-                                        <span>0.1 (Fast)</span>
-                                    </div>
-                                </div>
-
-                                {/* Batch Size */}
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label style={{ 
-                                        display: 'block', 
-                                        marginBottom: '0.5rem',
-                                        fontSize: '0.9rem',
-                                        color: '#4b5563' 
-                                    }}>
-                                        Batch Size: {networkArchitecture.batchSize}
-                                    </label>
-                                    <input 
-                                        type="range" 
-                                        min="1" 
-                                        max="64" 
-                                        step="1"
-                                        value={networkArchitecture.batchSize}
-                                        onChange={(e) => handleHyperparamChange('batchSize', e.target.value)}
-                                        style={{ width: '100%' }}
-                                    />
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        fontSize: '0.8rem', 
-                                        color: '#6b7280'
-                                    }}>
-                                        <span>1 (Slow, accurate)</span>
-                                        <span>64 (Fast, generalized)</span>
-                                    </div>
-                                </div>
-                                
-                                {/* Epochs */}
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label style={{ 
-                                        display: 'block', 
-                                        marginBottom: '0.5rem',
-                                        fontSize: '0.9rem',
-                                        color: '#4b5563' 
-                                    }}>
-                                        Epochs: {networkArchitecture.epochs}
-                                    </label>
-                                    <input 
-                                        type="range" 
-                                        min="10" 
-                                        max="1000" 
-                                        step="10"
-                                        value={networkArchitecture.epochs}
-                                        onChange={(e) => handleHyperparamChange('epochs', e.target.value)}
-                                        style={{ width: '100%' }}
-                                    />
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        fontSize: '0.8rem', 
-                                        color: '#6b7280'
-                                    }}>
-                                        <span>10</span>
-                                        <span>1000</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {/* Interaction Mode Controls */}
-                            <div style={{ 
-                                marginBottom: '1.5rem', 
-                                backgroundColor: 'white', 
-                                padding: '1.5rem', 
-                                borderRadius: '6px', 
-                                border: '1px solid #e5e7eb',
-                                width: '100%'
-                            }}>
-                                <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '500' }}>
-                                    Interaction Mode
-                                </h3>
-                                
-                                <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                                    <button
-                                        onClick={() => setInteractionMode('train')}
-                                        style={{
-                                            padding: '0.75rem 1rem',
-                                            backgroundColor: interactionMode === 'train' ? '#3b82f6' : '#e5e7eb',
-                                            color: interactionMode === 'train' ? 'white' : '#4b5563',
-                                            border: 'none',
-                                            borderRadius: '0.5rem',
-                                            cursor: 'pointer',
-                                            fontWeight: '500',
-                                            flex: 1,
-                                            fontSize: '0.95rem'
-                                        }}
-                                    >
-                                        Training Points
-                                    </button>
-                                    <button
-                                        onClick={() => setInteractionMode('test')}
-                                        style={{
-                                            padding: '0.75rem 1rem',
-                                            backgroundColor: interactionMode === 'test' ? '#3b82f6' : '#e5e7eb',
-                                            color: interactionMode === 'test' ? 'white' : '#4b5563',
-                                            border: 'none',
-                                            borderRadius: '0.5rem',
-                                            cursor: 'pointer',
-                                            fontWeight: '500',
-                                            flex: 1,
-                                            fontSize: '0.95rem'
-                                        }}
-                                    >
-                                        Prediction Points
-                                    </button>
-                                </div>
-                                
-                                {interactionMode === 'train' && (
-                                    <div style={{ marginBottom: '0.75rem' }}>
-                                        <p style={{ marginBottom: '0.75rem', color: '#4b5563', fontSize: '1rem' }}>
-                                            Select class for training points:
-                                        </p>
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            <button
-                                                onClick={() => setCurrentClass(0)}
-                                                style={{
-                                                    padding: '0.75rem 0.5rem',
-                                                    border: 'none',
-                                                    borderRadius: '0.5rem',
-                                                    backgroundColor: currentClass === 0 ? 'rgba(59, 130, 246, 1)' : 'rgba(59, 130, 246, 0.1)',
-                                                    color: currentClass === 0 ? 'white' : '#1e40af',
-                                                    cursor: 'pointer',
-                                                    fontWeight: '500',
-                                                    flex: 1,
-                                                    fontSize: '0.95rem'
-                                                }}
-                                            >
-                                                Class 0
-                                            </button>
-                                            <button
-                                                onClick={() => setCurrentClass(1)}
-                                                style={{
-                                                    padding: '0.75rem 0.5rem',
-                                                    border: 'none',
-                                                    borderRadius: '0.5rem',
-                                                    backgroundColor: currentClass === 1 ? 'rgba(239, 68, 68, 1)' : 'rgba(239, 68, 68, 0.1)',
-                                                    color: currentClass === 1 ? 'white' : '#b91c1c',
-                                                    cursor: 'pointer',
-                                                    fontWeight: '500',
-                                                    flex: 1,
-                                                    fontSize: '0.95rem'
-                                                }}
-                                            >
-                                                Class 1
-                                            </button>
-                                            <button
-                                                onClick={() => setCurrentClass(2)}
-                                                style={{
-                                                    padding: '0.75rem 0.5rem',
-                                                    border: 'none',
-                                                    borderRadius: '0.5rem',
-                                                    backgroundColor: currentClass === 2 ? 'rgba(34, 197, 94, 1)' : 'rgba(34, 197, 94, 0.1)',
-                                                    color: currentClass === 2 ? 'white' : '#15803d',
-                                                    cursor: 'pointer',
-                                                    fontWeight: '500',
-                                                    flex: 1,
-                                                    fontSize: '0.95rem'
-                                                }}
-                                            >
-                                                Class 2
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                            
-                            {/* Action buttons */}
-                            <div style={{ 
-                                marginBottom: '1.5rem',
-                                backgroundColor: 'white', 
-                                padding: '1.5rem', 
-                                borderRadius: '6px', 
-                                border: '1px solid #e5e7eb',
-                                width: '100%'
-                            }}>
-                                <h3 style={{ marginBottom: '1.25rem', fontSize: '1.1rem', fontWeight: '500' }}>Actions</h3>
-                                
-                                {/* Train Button */}
-                                <button 
-                                    onClick={handleRunModel}
-                                    disabled={loading || backendStatus === "disconnected"}
-                                    style={{
-                                        width: '100%',
-                                        backgroundColor: loading ? '#93c5fd' : '#3b82f6',
-                                        color: 'white',
-                                        padding: '0.9rem',
-                                        fontSize: '1.05rem',
-                                        fontWeight: '500',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        cursor: loading ? 'wait' : 'pointer',
-                                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                                        opacity: (loading || backendStatus === "disconnected") ? 0.7 : 1,
-                                        marginBottom: '1.25rem'
-                                    }}
-                                >
-                                    {loading ? 'Training...' : 'Train Network'}
-                                </button>
-
-                                {/* Predict Button */}
-                                <button 
-                                    onClick={handlePredict}
-                                    disabled={loading || backendStatus === "disconnected" || !results}
-                                    style={{
-                                        width: '100%',
-                                        backgroundColor: loading ? '#93c5fd' : '#3b82f6',
-                                        color: 'white',
-                                        padding: '0.9rem',
-                                        fontSize: '1.05rem',
-                                        fontWeight: '500',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        cursor: loading ? 'wait' : 'pointer',
-                                        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                                        opacity: (loading || backendStatus === "disconnected" || !results) ? 0.7 : 1
-                                    }}
-                                >
-                                    {loading ? 'Predicting...' : 'Predict Points'}
-                                </button>
-                            </div>
-                            
-                            {/* Results Section */}
-                            {results && (
-                                <div style={{ 
-                                    width: '100%',
-                                    backgroundColor: 'white', 
-                                    padding: '1.5rem', 
-                                    borderRadius: '6px', 
-                                    border: '1px solid #e5e7eb',
-                                    fontSize: '0.95rem'
-                                }}>
-                                    <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '500' }}>Results</h3>
-                                    
-                                    {/* Accuracy Box */}
-                                    <div style={{
-                                        backgroundColor: '#f3f4f6',
-                                        padding: '1rem',
-                                        borderRadius: '8px',
-                                        border: '1px solid #e5e7eb',
-                                        marginBottom: '1rem',
-                                        textAlign: 'center'
-                                    }}>
-                                        <p style={{
-                                            fontSize: '1.2rem',
-                                            fontWeight: '600',
-                                            color: '#111827'
-                                        }}>
-                                            Accuracy: {(results.accuracy * 100).toFixed(2)}%
-                                        </p>
-                                        <p>Loss: {results.loss?.toFixed(4) || 'N/A'}</p>
-                                        <p>Epochs: {results.epochs}</p>
-                                    </div>
-                                    
-                                    {/* Decision Boundary Image */}
-                                    {decisionBoundary && (
-                                        <div style={{
-                                            textAlign: 'center'
-                                        }}>
-                                            <h4 style={{ marginBottom: '0.5rem' }}>Decision Boundary:</h4>
-                                            <img 
-                                                src={`data:image/png;base64,${decisionBoundary}`} 
-                                                alt="Decision Boundary"
-                                                style={{ width: '100%', maxWidth: '400px' }}
-                                            />
-                                        </div>
-                                    )}
-
-                                    {results && results.model_info && (
-                                        <div style={{ marginTop: '1rem' }}>
-                                            <h4 style={{ marginBottom: '0.5rem' }}>Training History:</h4>
-                                            <div style={{ height: 200, width: '100%' }}>
-                                                <ResponsiveContainer>
-                                                    <LineChart
-                                                        data={results.model_info.training_history || []}
-                                                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                                                    >
-                                                        <CartesianGrid strokeDasharray="3 3" />
-                                                        <XAxis dataKey="epoch" />
-                                                        <YAxis />
-                                                        <Tooltip />
-                                                        <Legend />
-                                                        <Line type="monotone" dataKey="accuracy" stroke="#8884d8" name="Training Accuracy" />
-                                                        <Line type="monotone" dataKey="val_accuracy" stroke="#82ca9d" name="Validation Accuracy" />
-                                                    </LineChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                        </div>
-                                    )}
+                                    {Object.keys(neuronVisualizations).length > 0 
+                                        ? "" 
+                                        : " "}
                                 </div>
                             )}
                         </div>
                     </div>
-                </div>
-                
-                {/* Loading spinner */}
-                {loading && (
-                    <div style={{
-                        position: 'fixed',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                    
+                    {/* Right column: Controls and info boxes */}
+                    <div style={{ 
+                        width: '100%',
+                        gridColumn: '2 / 3',
+                        gridRow: '1 / 2',
                         display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        zIndex: 1000
+                        flexDirection: 'column'
                     }}>
-                        <div style={{
-                            border: '4px solid #f3f4f6',
-                            borderTopColor: '#3b82f6',
-                            borderRadius: '50%',
-                            width: '40px',
-                            height: '40px',
-                            animation: 'spin 1s linear infinite'
-                        }}></div>
-                        <style>{`
-                            @keyframes spin {
-                                0% { transform: rotate(0deg); }
-                                100% { transform: rotate(360deg); }
-                            }
-                        `}</style>
+                        <h2 className="section-title">Controls & Results</h2>
+                        
+                        {/* Network Architecture Controls */}
+                        <div style={{ 
+                            marginBottom: '1.5rem', 
+                            backgroundColor: 'white', 
+                            padding: '1.5rem', 
+                            borderRadius: '6px', 
+                            border: '1px solid #e5e7eb',
+                            width: '100%'
+                        }}>
+                            <h3 style={{ marginBottom: '1.25rem', fontSize: '1.1rem', fontWeight: '500' }}>Network Architecture</h3>
+                            
+                            {/* Hidden Layer Controls */}
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: '0.75rem'
+                                }}>
+                                    <label style={{ fontWeight: '500', color: '#4b5563' }}>
+                                        Hidden Layers
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                            onClick={handleAddLayer}
+                                            style={{
+                                                padding: '0.25rem 0.5rem',
+                                                backgroundColor: '#f3f4f6',
+                                                color: '#4b5563',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                fontSize: '0.9rem',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            + Add
+                                        </button>
+                                        <button
+                                            onClick={handleRemoveLayer}
+                                            disabled={networkArchitecture.hiddenLayers.length <= 1}
+                                            style={{
+                                                padding: '0.25rem 0.5rem',
+                                                backgroundColor: networkArchitecture.hiddenLayers.length <= 1 ? '#f3f4f6' : '#fee2e2',
+                                                color: networkArchitecture.hiddenLayers.length <= 1 ? '#9ca3af' : '#b91c1c',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                fontSize: '0.9rem',
+                                                cursor: networkArchitecture.hiddenLayers.length <= 1 ? 'not-allowed' : 'pointer'
+                                            }}
+                                        >
+                                            - Remove
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {/* Layer configuration UI */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    flexDirection: 'column',
+                                    gap: '0.75rem',
+                                    maxHeight: '200px',
+                                    overflowY: 'auto',
+                                    padding: '0.5rem',
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: '0.5rem',
+                                    backgroundColor: '#f9fafb'
+                                }}>
+                                    {networkArchitecture.hiddenLayers.map((layer, index) => (
+                                        <div 
+                                            key={index} 
+                                            style={{ 
+                                                display: 'flex', 
+                                                gap: '0.75rem',
+                                                padding: '0.5rem',
+                                                backgroundColor: 'white',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: '0.5rem'
+                                            }}
+                                        >
+                                            <div style={{ flex: 1 }}>
+                                                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.25rem', color: '#6b7280' }}>
+                                                    Neurons
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="20"
+                                                    value={layer.neurons}
+                                                    onChange={(e) => handleLayerChange(index, 'neurons', e.target.value)}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '0.25rem 0.5rem',
+                                                        border: '1px solid #d1d5db',
+                                                        borderRadius: '0.25rem'
+                                                    }}
+                                                />
+                                            </div>
+                                            <div style={{ flex: 2 }}>
+                                                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.25rem', color: '#6b7280' }}>
+                                                    Activation
+                                                </label>
+                                                <select
+                                                    value={layer.activation}
+                                                    onChange={(e) => handleLayerChange(index, 'activation', e.target.value)}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '0.25rem 0.5rem',
+                                                        border: '1px solid #d1d5db',
+                                                        borderRadius: '0.25rem'
+                                                    }}
+                                                >
+                                                    <option value="relu">ReLU</option>
+                                                    <option value="sigmoid">Sigmoid</option>
+                                                    <option value="tanh">Tanh</option>
+                                                </select>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '0.25rem' }}>
+                                                <button
+                                                    onClick={() => handleAddLayerAt(index)}
+                                                    title="Add layer after this one"
+                                                    style={{
+                                                        padding: '0.25rem',
+                                                        backgroundColor: '#e5e7eb',
+                                                        color: '#4b5563',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: '1rem' }}>+</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleRemoveLayerAt(index)}
+                                                    disabled={networkArchitecture.hiddenLayers.length <= 1}
+                                                    title="Remove this layer"
+                                                    style={{
+                                                        padding: '0.25rem',
+                                                        backgroundColor: networkArchitecture.hiddenLayers.length <= 1 ? '#f3f4f6' : '#fee2e2',
+                                                        color: networkArchitecture.hiddenLayers.length <= 1 ? '#9ca3af' : '#b91c1c',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        cursor: networkArchitecture.hiddenLayers.length <= 1 ? 'not-allowed' : 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: '1rem' }}>-</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            {/* Training Parameters */}
+                            <h4 style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: '500', color: '#4b5563' }}>
+                                Training Parameters
+                            </h4>
+                            
+                            {/* Learning Rate */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ 
+                                    display: 'block', 
+                                    marginBottom: '0.5rem', 
+                                    fontSize: '0.9rem',
+                                    color: '#4b5563' 
+                                }}>
+                                    Learning Rate: {networkArchitecture.learningRate}
+                                </label>
+                                <input 
+                                    type="range" 
+                                    min="0.0001" 
+                                    max="0.1" 
+                                    step="0.001"
+                                    value={networkArchitecture.learningRate}
+                                    onChange={(e) => handleHyperparamChange('learningRate', e.target.value)}
+                                    style={{ width: '100%' }}
+                                />
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    fontSize: '0.8rem', 
+                                    color: '#6b7280'
+                                }}>
+                                    <span>0.0001 (Slow)</span>
+                                    <span>0.1 (Fast)</span>
+                                </div>
+                            </div>
+
+                            {/* Batch Size */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ 
+                                    display: 'block', 
+                                    marginBottom: '0.5rem',
+                                    fontSize: '0.9rem',
+                                    color: '#4b5563' 
+                                }}>
+                                    Batch Size: {networkArchitecture.batchSize}
+                                </label>
+                                <input 
+                                    type="range" 
+                                    min="1" 
+                                    max="64" 
+                                    step="1"
+                                    value={networkArchitecture.batchSize}
+                                    onChange={(e) => handleHyperparamChange('batchSize', e.target.value)}
+                                    style={{ width: '100%' }}
+                                />
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    fontSize: '0.8rem', 
+                                    color: '#6b7280'
+                                }}>
+                                    <span>1 (Slow, accurate)</span>
+                                    <span>64 (Fast, generalized)</span>
+                                </div>
+                            </div>
+                            
+                            {/* Epochs */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ 
+                                    display: 'block', 
+                                    marginBottom: '0.5rem',
+                                    fontSize: '0.9rem',
+                                    color: '#4b5563' 
+                                }}>
+                                    Epochs: {networkArchitecture.epochs}
+                                </label>
+                                <input 
+                                    type="range" 
+                                    min="10" 
+                                    max="1000" 
+                                    step="10"
+                                    value={networkArchitecture.epochs}
+                                    onChange={(e) => handleHyperparamChange('epochs', e.target.value)}
+                                    style={{ width: '100%' }}
+                                />
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    fontSize: '0.8rem', 
+                                    color: '#6b7280'
+                                }}>
+                                    <span>10</span>
+                                    <span>1000</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Interaction Mode Controls */}
+                        <div style={{ 
+                            marginBottom: '1.5rem', 
+                            backgroundColor: 'white', 
+                            padding: '1.5rem', 
+                            borderRadius: '6px', 
+                            border: '1px solid #e5e7eb',
+                            width: '100%'
+                        }}>
+                            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '500' }}>
+                                Interaction Mode
+                            </h3>
+                            
+                            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                                <button
+                                    onClick={() => setInteractionMode('train')}
+                                    style={{
+                                        padding: '0.75rem 1rem',
+                                        backgroundColor: interactionMode === 'train' ? '#3b82f6' : '#e5e7eb',
+                                        color: interactionMode === 'train' ? 'white' : '#4b5563',
+                                        border: 'none',
+                                        borderRadius: '0.5rem',
+                                        cursor: 'pointer',
+                                        fontWeight: '500',
+                                        flex: 1,
+                                        fontSize: '0.95rem'
+                                    }}
+                                >
+                                    Training Points
+                                </button>
+                                <button
+                                    onClick={() => setInteractionMode('test')}
+                                    style={{
+                                        padding: '0.75rem 1rem',
+                                        backgroundColor: interactionMode === 'test' ? '#3b82f6' : '#e5e7eb',
+                                        color: interactionMode === 'test' ? 'white' : '#4b5563',
+                                        border: 'none',
+                                        borderRadius: '0.5rem',
+                                        cursor: 'pointer',
+                                        fontWeight: '500',
+                                        flex: 1,
+                                        fontSize: '0.95rem'
+                                    }}
+                                >
+                                    Prediction Points
+                                </button>
+                            </div>
+                            
+                            {interactionMode === 'train' && (
+                                <div style={{ marginBottom: '0.75rem' }}>
+                                    <p style={{ marginBottom: '0.75rem', color: '#4b5563', fontSize: '1rem' }}>
+                                        Select class for training points:
+                                    </p>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                            onClick={() => setCurrentClass(0)}
+                                            style={{
+                                                padding: '0.75rem 0.5rem',
+                                                border: 'none',
+                                                borderRadius: '0.5rem',
+                                                backgroundColor: currentClass === 0 ? 'rgba(59, 130, 246, 1)' : 'rgba(59, 130, 246, 0.1)',
+                                                color: currentClass === 0 ? 'white' : '#1e40af',
+                                                cursor: 'pointer',
+                                                fontWeight: '500',
+                                                flex: 1,
+                                                fontSize: '0.95rem'
+                                            }}
+                                        >
+                                            Class 0
+                                        </button>
+                                        <button
+                                            onClick={() => setCurrentClass(1)}
+                                            style={{
+                                                padding: '0.75rem 0.5rem',
+                                                border: 'none',
+                                                borderRadius: '0.5rem',
+                                                backgroundColor: currentClass === 1 ? 'rgba(239, 68, 68, 1)' : 'rgba(239, 68, 68, 0.1)',
+                                                color: currentClass === 1 ? 'white' : '#b91c1c',
+                                                cursor: 'pointer',
+                                                fontWeight: '500',
+                                                flex: 1,
+                                                fontSize: '0.95rem'
+                                            }}
+                                        >
+                                            Class 1
+                                        </button>
+                                        <button
+                                            onClick={() => setCurrentClass(2)}
+                                            style={{
+                                                padding: '0.75rem 0.5rem',
+                                                border: 'none',
+                                                borderRadius: '0.5rem',
+                                                backgroundColor: currentClass === 2 ? 'rgba(34, 197, 94, 1)' : 'rgba(34, 197, 94, 0.1)',
+                                                color: currentClass === 2 ? 'white' : '#15803d',
+                                                cursor: 'pointer',
+                                                fontWeight: '500',
+                                                flex: 1,
+                                                fontSize: '0.95rem'
+                                            }}
+                                        >
+                                            Class 2
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Action buttons */}
+                        <div style={{ 
+                            marginBottom: '1.5rem',
+                            backgroundColor: 'white', 
+                            padding: '1.5rem', 
+                            borderRadius: '6px', 
+                            border: '1px solid #e5e7eb',
+                            width: '100%'
+                        }}>
+                            <h3 style={{ marginBottom: '1.25rem', fontSize: '1.1rem', fontWeight: '500' }}>Actions</h3>
+                            
+                            {/* Train Button */}
+                            <button 
+                                onClick={handleRunModel}
+                                disabled={loading || backendStatus === "disconnected"}
+                                style={{
+                                    width: '100%',
+                                    backgroundColor: loading ? '#93c5fd' : '#3b82f6',
+                                    color: 'white',
+                                    padding: '0.9rem',
+                                    fontSize: '1.05rem',
+                                    fontWeight: '500',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: loading ? 'wait' : 'pointer',
+                                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                                    opacity: (loading || backendStatus === "disconnected") ? 0.7 : 1,
+                                    marginBottom: '1.25rem'
+                                }}
+                            >
+                                {loading ? 'Training...' : 'Train Network'}
+                            </button>
+
+                            {/* Predict Button */}
+                            <button 
+                                onClick={handlePredict}
+                                disabled={loading || backendStatus === "disconnected" || !results}
+                                style={{
+                                    width: '100%',
+                                    backgroundColor: loading ? '#93c5fd' : '#3b82f6',
+                                    color: 'white',
+                                    padding: '0.9rem',
+                                    fontSize: '1.05rem',
+                                    fontWeight: '500',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: loading ? 'wait' : 'pointer',
+                                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                                    opacity: (loading || backendStatus === "disconnected" || !results) ? 0.7 : 1
+                                }}
+                            >
+                                {loading ? 'Predicting...' : 'Predict Points'}
+                            </button>
+                        </div>
+                        
+                        {/* Results Section */}
+                        {results && (
+                            <div style={{ 
+                                width: '100%',
+                                backgroundColor: 'white', 
+                                padding: '1.5rem', 
+                                borderRadius: '6px', 
+                                border: '1px solid #e5e7eb',
+                                fontSize: '0.95rem'
+                            }}>
+                                <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '500' }}>Results</h3>
+                                
+                                {/* Accuracy Box */}
+                                <div style={{
+                                    backgroundColor: '#f3f4f6',
+                                    padding: '1rem',
+                                    borderRadius: '8px',
+                                    border: '1px solid #e5e7eb',
+                                    marginBottom: '1rem',
+                                    textAlign: 'center'
+                                }}>
+                                    <p style={{
+                                        fontSize: '1.2rem',
+                                        fontWeight: '600',
+                                        color: '#111827'
+                                    }}>
+                                        Accuracy: {(results.accuracy * 100).toFixed(2)}%
+                                    </p>
+                                    <p>Loss: {results.loss?.toFixed(4) || 'N/A'}</p>
+                                    <p>Epochs: {results.epochs}</p>
+                                </div>
+                                
+                                {/* Decision Boundary Image */}
+                                {decisionBoundary && (
+                                    <div style={{
+                                        textAlign: 'center'
+                                    }}>
+                                        <h4 style={{ marginBottom: '0.5rem' }}>Decision Boundary:</h4>
+                                        <img 
+                                            src={`data:image/png;base64,${decisionBoundary}`} 
+                                            alt="Decision Boundary"
+                                            style={{ width: '100%', maxWidth: '400px' }}
+                                        />
+                                    </div>
+                                )}
+
+                                {results && results.model_info && (
+                                    <div style={{ marginTop: '1rem' }}>
+                                        <h4 style={{ marginBottom: '0.5rem' }}>Training History:</h4>
+                                        <div style={{ height: 200, width: '100%' }}>
+                                            <ResponsiveContainer>
+                                                <LineChart
+                                                    data={results.model_info.training_history || []}
+                                                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                                                >
+                                                    <CartesianGrid strokeDasharray="3 3" />
+                                                    <XAxis dataKey="epoch" />
+                                                    <YAxis />
+                                                    <Tooltip />
+                                                    <Legend />
+                                                    <Line type="monotone" dataKey="accuracy" stroke="#8884d8" name="Training Accuracy" />
+                                                    <Line type="monotone" dataKey="val_accuracy" stroke="#82ca9d" name="Validation Accuracy" />
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
-                )}
-            </motion.div>
-        );
+                </div>
+            </div>
+            
+            {/* Loading spinner */}
+            {loading && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        border: '4px solid #f3f4f6',
+                        borderTopColor: '#3b82f6',
+                        borderRadius: '50%',
+                        width: '40px',
+                        height: '40px',
+                        animation: 'spin 1s linear infinite'
+                    }}></div>
+                    <style>{`
+                        @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                        }
+                    `}</style>
+                </div>
+            )}
+        </motion.div>
+    );
 }
 
 export default ANN;
