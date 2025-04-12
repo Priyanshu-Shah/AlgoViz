@@ -30,9 +30,9 @@ function HomePage() {
   // Model definitions
   const supervisedModels = [
     {
-      name: "Linear Regression",
-      description: "Predict continuous values based on linear relationships",
-      path: "/lin-reg",
+      name: "Polynomial Regression",
+      description: "Fit polynomial curves to predict continuous values",
+      path: "/reg",
       image: "https://cdn.iconscout.com/icon/premium/png-256-thumb/linear-regression-1522289-1289191.png",
       implemented: true
     },

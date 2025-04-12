@@ -12,7 +12,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
 # Import the model functions
-from models.linReg import run_linear_regression
+from models.Reg import run_polynomial_regression
 from models.knn import predict_single_point, generate_decision_boundary
 from models.kmeans import run_kmeans, generate_clustering_data
 from models.PCA import run_pca, generate_pca_data  
@@ -48,109 +48,6 @@ def root():
             "/api/dbscan"  
         ]
     })
-
-@app.route('/api/linear-regression', methods=['POST'])
-def linear_regression():
-    data = request.json
-    
-    try:
-        # Log incoming data for debugging
-        print(f"Received API request for linear regression")
-        print(f"Request data type: {type(data)}")
-        print(f"Request data content: {data}")
-        
-        # Validate input data
-        if not data or not isinstance(data, dict):
-            return jsonify({"error": "Invalid request format. Expected JSON object"}), 400
-            
-        if 'X' not in data or 'y' not in data:
-            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
-            
-        if not isinstance(data['X'], list) or not isinstance(data['y'], list):
-            return jsonify({"error": "X and y must be arrays/lists"}), 400
-            
-        if len(data['X']) < 3:
-            return jsonify({"error": "At least 3 data points are required for regression"}), 400
-        
-        if len(data['X']) != len(data['y']):
-            return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
-        
-        # Get alpha parameter with default value
-        alpha = data.get('alpha', 0.01)
-        
-        # Get iterations parameter with default value
-        iterations = data.get('iterations', 100)
-        
-        # Ensure iterations is an integer
-        try:
-            iterations = int(iterations)
-            if iterations < 1:
-                iterations = 100  # Default if invalid
-        except (ValueError, TypeError):
-            iterations = 100  # Default if invalid
-
-         # Call the model with alpha and iterations parameters
-        print(f"Calling linear regression model function with alpha={alpha}, iterations={iterations}")
-        result = run_linear_regression(data, alpha=alpha, iterations=iterations)
-        
-        # Check if the result is None (which would cause JSON serialization issues)
-        if result is None:
-            return jsonify({"error": "Model returned None"}), 500
-            
-        # Check for error field    
-        if isinstance(result, dict) and 'error' in result:
-            print(f"Error in linear regression: {result['error']}")
-            return jsonify(result), 400
-        
-        # Ensure the response is JSON serializable
-        if not isinstance(result, dict):
-            return jsonify({"error": f"Expected dict result, got {type(result)}"}), 500
-            
-        # Create a clean copy with additional fields
-        sanitized_result = {
-            'coefficient': float(result.get('coefficient', 0)),
-            'intercept': float(result.get('intercept', 0)),
-            'mse': float(result.get('mse', 0)),
-            'r2': float(result.get('r2', 0)),
-            'equation': result.get('equation', 'y = 0x + 0')
-        }
-        
-        # Add plot only if available and valid
-        if 'plot' in result and result['plot']:
-            sanitized_result['plot'] = result['plot']
-        
-        # Add cost history plot if available
-        if 'cost_history_plot' in result and result['cost_history_plot']:
-            sanitized_result['cost_history_plot'] = result['cost_history_plot']
-        
-        # Add cost history data if available
-        if 'cost_history' in result and result['cost_history']:
-            sanitized_result['cost_history'] = result['cost_history']
-        
-        print(f"Returning successful result with keys: {list(sanitized_result.keys())}")
-        return jsonify(sanitized_result)
-        
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Exception in linear regression endpoint: {str(e)}")
-        print(f"Traceback: {error_details}")
-        
-        error_response = {
-            "error": str(e),
-            "traceback": error_details
-        }
-        
-        # Add request data info if available
-        if data and isinstance(data, dict):
-            error_response["data_info"] = {
-                "X_type": str(type(data.get('X', None))),
-                "y_type": str(type(data.get('y', None))),
-                "X_length": len(data.get('X', [])) if isinstance(data.get('X', None), list) else "Not a list",
-                "y_length": len(data.get('y', [])) if isinstance(data.get('y', None), list) else "Not a list"
-            }
-            
-        return jsonify(error_response), 500
 
 @app.route('/api/svm', methods=['POST'])
 def svm():
@@ -203,16 +100,6 @@ def svm():
         print(f"Traceback: {error_details}")
         
         return jsonify({"error": str(e), "traceback": error_details}), 500
-
-@app.route('/api/linear-regression/sample', methods=['GET'])
-def linear_regression_sample():
-    try:
-        n_samples = request.args.get('n_samples', default=30, type=int)
-        noise = request.args.get('noise', default=5.0, type=float)
-        data = generate_linear_data(n_samples=n_samples, noise=noise)
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
 
 @app.route('/api/svm/sample', methods=['GET'])
 def svm_sample():
@@ -294,6 +181,8 @@ def knn_predict_point():
         print(f"Exception in KNN predict point endpoint: {str(e)}")
         print(f"Traceback: {error_traceback}")
         return jsonify({"error": str(e), "traceback": error_traceback}), 500
+
+
 
 @app.route('/api/knn-decision-boundary', methods=['POST'])
 def knn_decision_boundary():
@@ -1264,7 +1153,7 @@ def ann_sample_data():
         variance = data.get('variance', 0.5)
         
         # Handle specific dataset types
-        if dataset_type == 'xor':
+        if (dataset_type == 'xor'):
             # XOR always has 2 classes
             n_clusters = 2
         elif dataset_type == 'circle':
@@ -1416,6 +1305,126 @@ def get_dbscan_sample_data():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+@app.route('/api/regression', methods=['POST'])
+def regression():
+    """
+    Endpoint for polynomial regression of any degree
+    """
+    data = request.json
+    
+    try:
+        # Log incoming data for debugging
+        print(f"Received API request for polynomial regression")
+        print(f"Request data type: {type(data)}")
+        print(f"Request data content: {data}")
+        
+        # Validate input data
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "Invalid request format. Expected JSON object"}), 400
+            
+        if 'X' not in data or 'y' not in data:
+            return jsonify({"error": "Missing required data fields: X and y must be provided"}), 400
+            
+        if not isinstance(data['X'], list) or not isinstance(data['y'], list):
+            return jsonify({"error": "X and y must be arrays/lists"}), 400
+            
+        if len(data['X']) < 2:
+            return jsonify({"error": "At least 2 data points are required for regression"}), 400
+        
+        if len(data['X']) != len(data['y']):
+            return jsonify({"error": f"Length mismatch: X has {len(data['X'])} elements, y has {len(data['y'])} elements"}), 400
+        
+        # Extract parameters with defaults
+        alpha = float(data.get('alpha', 0.01))
+        iterations = int(data.get('iterations', 100))
+        degree = int(data.get('degree', 1))  # Default to 1 for backward compatibility
+        
+        # Ensure iterations is an integer
+        try:
+            iterations = int(iterations)
+            if iterations < 1:
+                iterations = 100  # Default if invalid
+        except (ValueError, TypeError):
+            iterations = 100  # Default if invalid
+
+        # Call the model with parameters
+        print(f"Calling polynomial regression model function with degree={degree}, alpha={alpha}, iterations={iterations}")
+        result = run_polynomial_regression(data, degree=degree, alpha=alpha, iterations=iterations)
+        
+        # Check if the result is None (which would cause JSON serialization issues)
+        if result is None:
+            return jsonify({"error": "Model returned None"}), 500
+            
+        # Check for error field    
+        if isinstance(result, dict) and 'error' in result:
+            print(f"Error in polynomial regression: {result['error']}")
+            return jsonify(result), 400
+            
+        return jsonify(result)
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Exception in polynomial regression endpoint: {str(e)}")
+        print(f"Traceback: {error_details}")
+        
+        error_response = {
+            "error": str(e),
+            "traceback": error_details
+        }
+        
+        # Add request data info if available
+        if data and isinstance(data, dict):
+            error_response["data_info"] = {
+                "X_type": str(type(data.get('X', None))),
+                "y_type": str(type(data.get('y', None))),
+                "X_length": len(data.get('X', [])) if isinstance(data.get('X', None), list) else "Not a list",
+                "y_length": len(data.get('y', [])) if isinstance(data.get('y', None), list) else "Not a list"
+            }
+            
+        return jsonify(error_response), 500
+
+@app.route('/api/regression/sample_data', methods=['POST'])
+def generate_regression_sample_data():
+    """Generate sample data for polynomial regression visualization"""
+    try:
+        # Parse request parameters
+        data = request.json
+        dataset_type = data.get('dataset_type', 'linear')
+        n_samples = min(int(data.get('n_samples', 30)), 100)  # Limit to 100 points
+        noise_level = float(data.get('noise_level', 0.5))
+        
+        # Generate X values (evenly distributed in range)
+        X = np.linspace(-8, 8, n_samples).reshape(-1, 1)
+        
+        # Generate y values based on dataset type
+        if dataset_type == 'linear':
+            # y = 2x + 1 + noise
+            y = 2 * X.flatten() + 1 + np.random.normal(0, noise_level, n_samples)
+            
+        elif dataset_type == 'quadratic':
+            # y = 0.5x² - 2x + 1 + noise
+            y = 0.5 * X.flatten()**2 - 2 * X.flatten() +  + np.random.normal(0, noise_level, n_samples)
+            
+        elif dataset_type == 'sinusoidal':
+            # y = 3sin(x) + noise
+              y = 3 * np.sin(0.7 * X.flatten()) + np.random.normal(0, noise_level, n_samples)
+            
+        else:
+            return jsonify({"error": f"Unknown dataset type: {dataset_type}"}), 400
+        
+        # Return data as JSON
+        return jsonify({
+            "X": X.flatten().tolist(),
+            "y": y.tolist(),
+            "dataset_type": dataset_type,
+            "noise_level": noise_level
+        })
+        
+    except Exception as e:
+        print(f"Error generating sample data: {str(e)}")
+        return jsonify({"error": f"Error generating sample data: {str(e)}"}), 500
 
 if __name__ == '__main__':
     print(" * ML Visualizer Backend Starting...")
