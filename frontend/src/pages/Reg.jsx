@@ -48,7 +48,7 @@ function Reg() {
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/health');
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/health`);
         setBackendStatus(response.data.status === "healthy" ? "connected" : "disconnected");
       } catch (err) {
         console.error("Backend health check failed:", err);
@@ -378,7 +378,7 @@ function Reg() {
       setLoading(true);
       setError(null);
       
-      const response = await axios.post('http://localhost:5000/api/regression/sample_data', {
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/regression/sample_data`, {
         dataset_type: sampleType,
         n_samples: sampleCount,
         noise_level: sampleNoise / 10 // Scale down to match backend expectation
@@ -447,7 +447,7 @@ function Reg() {
       };
 
       console.log('Calling API endpoint with data:', apiData);
-      const response = await axios.post('http://localhost:5000/api/regression', apiData);
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/regression`, apiData);
       
       if (response.data.error) {
         throw new Error(response.data.error);
