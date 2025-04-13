@@ -7,7 +7,15 @@ import os
 import sys
 
 app = Flask(__name__)
-CORS(app)
+
+# Update CORS configuration to explicitly allow your Firebase domain
+CORS(app, resources={
+    r"/*": {
+        "origins": ["https://algovizz.web.app", "http://localhost:3000"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
@@ -1427,10 +1435,5 @@ def generate_regression_sample_data():
         return jsonify({"error": f"Error generating sample data: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    print(" * ML Visualizer Backend Starting...")
-    print(" * Make sure you have the required packages installed")
-    print(" * Backend will be available at http://localhost:5000")
-    print(" * Test the API by accessing http://localhost:5000/ in your browser")
-    print(" * Press Ctrl+C to stop the server")
-    # Try using a different host format if 0.0.0.0 isn't working
-    app.run(host='127.0.0.1', port=5000, debug=True)
+  debug_mode = os.environ.get('FLASK_ENV') == 'development'
+  app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=debug_mode)
