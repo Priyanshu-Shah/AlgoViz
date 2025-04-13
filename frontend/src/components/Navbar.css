@@ -99,3 +99,10 @@
     display: none;
   }
 }
+.logo img {
+  height: 64px; /* Adjust this value to your preferred size */
+  width: auto;
+  margin-left: 8px;
+  vertical-align: middle;
+  margin-bottom: 24px;
+}
