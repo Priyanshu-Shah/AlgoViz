@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { runPCA, getPCASampleData, checkHealth } from '../api';
 import './ModelPage.css';
-const API_URL = 'http://localhost:5000/api';
 
 function PCA() {
   const navigate = useNavigate();

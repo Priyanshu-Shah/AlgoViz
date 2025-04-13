@@ -12,4 +12,3 @@ pillow>=8.0.0
 tensorflow>=2.0.0
 keras>=2.0.0
 pydot>=1.4.2
-base64>=1.0.0
