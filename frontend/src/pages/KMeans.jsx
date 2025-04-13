@@ -43,13 +43,13 @@ function KMeans() {
     'rgba(124, 58, 237, 0.7)'   // Indigo
   ];
   
-  const apiUrl = 'http://127.0.0.1:5000';
+  const apiUrl = process.env.REACT_APP_API_URL || 'http://127.0.0.1:5000';
 
   // Check backend health on component mount
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const response = await axios.get(`${apiUrl}/api/health`);
+        const response = await axios.get(`${apiUrl}/health`);
         setBackendStatus(response.data.status === "healthy" ? "connected" : "disconnected");
       } catch (err) {
         console.error("Backend health check failed:", err);
@@ -80,7 +80,7 @@ function KMeans() {
       setError(null);
       
       const response = await axios.get(
-        `${apiUrl}/api/kmeans/sample?n_samples=${sampleCount}&n_clusters=${sampleClusters}&variance=${clusterVariance}&dataset_type=${datasetType}`
+        `${apiUrl}/kmeans/sample?n_samples=${sampleCount}&n_clusters=${sampleClusters}&variance=${clusterVariance}&dataset_type=${datasetType}`
       );
       
       setData(response.data);
@@ -175,7 +175,7 @@ function KMeans() {
         return_history: true  // Request iteration history
       };
   
-      const response = await axios.post(`${apiUrl}/api/kmeans`, requestData);
+      const response = await axios.post(`${apiUrl}/kmeans`, requestData);
       
       if (response.data.error) {
         throw new Error(response.data.error);

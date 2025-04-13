@@ -745,7 +745,7 @@ function ANN() {
         }[sampleDataType] || 'blobs';
         
         // Call the backend API
-        axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/ann/sample_data`, {
+        axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/ann/sample_data`, {
             dataset_type: backendDatasetType,
             count: sampleCount,
             n_clusters: sampleClusters,
@@ -857,7 +857,7 @@ function ANN() {
             };
     
             console.log('Calling API endpoint with data:', apiData);
-            const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/ann/train`, apiData);
+            const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/ann/train`, apiData);
     
             if (response.data.error) {
                 throw new Error(response.data.error);
@@ -930,7 +930,7 @@ function ANN() {
                 points: predictedPoints.map(point => [parseFloat(point.x), parseFloat(point.y)])
             };
     
-            const response = await axios.post('http://localhost:5000/api/ann/predict', apiData);
+            const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/ann/predict`, apiData);
     
             if (response.data.error) {
                 throw new Error(response.data.error);

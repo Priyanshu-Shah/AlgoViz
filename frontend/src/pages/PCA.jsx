@@ -569,6 +569,8 @@ function PCA() {
     setDataPairs([{ x: '', y: '' }]);
     setResults(null);
     setError(null);
+    setProjectedPoints([]); // Clear projected points
+    setIsProjectionActive(false); 
   };
 
   const handleRunModel = async () => {

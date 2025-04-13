@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import './ModelPage.css';
-
+import { checkHealth, predictKnnPoint, getKnnDecisionBoundary } from '../api';
 function KNN() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('classification');
@@ -284,21 +284,7 @@ function KNN() {
           "n_neighbors": apiData.n_neighbors
         });
         
-        const response = await fetch('http://localhost:5000/api/knn-predict-point', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(apiData),
-        });
-        
-        const result = await response.json();
-        
-        if (result.error) {
-          setError(result.error);
-          setLoading(false);
-          return;
-        }
+        const result = await predictKnnPoint(apiData);
         
         console.log("Received prediction result:", result);
         
@@ -346,21 +332,7 @@ function KNN() {
         "n_neighbors": apiData.n_neighbors
       });
       
-      const response = await fetch('http://localhost:5000/api/knn-decision-boundary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(apiData),
-      });
-      
-      const result = await response.json();
-      
-      if (result.error) {
-        setError(result.error);
-        setLoading(false);
-        return;
-      }
+      const result = await getKnnDecisionBoundary(apiData);
       
       // Set the boundary image from base64 data
       if (result.decision_boundary) {

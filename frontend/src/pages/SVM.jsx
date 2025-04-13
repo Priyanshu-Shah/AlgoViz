@@ -439,7 +439,7 @@ function SVM(){
         setShowSampleDataModal(false);
         
         // Call the backend API
-        axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/svm/sample_data`, {
+        axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/svm/sample_data`, {
             dataset_type: sampleDataType,
             count: sampleCount,
             n_clusters: sampleClusters,

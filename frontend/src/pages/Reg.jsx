@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import axios from 'axios';
 import './ModelPage.css';
+import { checkHealth, runPolynomialRegression, getPolynomialRegressionSampleData } from '../api';
 
 function Reg() {
   const navigate = useNavigate();
@@ -33,7 +33,7 @@ function Reg() {
   
   // Algorithm visualization states (similar to DBScan)
   const [algorithmStatus, setAlgorithmStatus] = useState("idle"); // "idle", "running", "completed"
-  const [iterations_history, setIterationsHistory] = useState([]);
+  const [iteration_history, setIterationHistory] = useState([]);
   const [currentIteration, setCurrentIteration] = useState(0);
   const [isAutoAdvancing, setIsAutoAdvancing] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(500); // milliseconds between iterations
@@ -48,8 +48,8 @@ function Reg() {
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/health`);
-        setBackendStatus(response.data.status === "healthy" ? "connected" : "disconnected");
+        const response = await checkHealth();
+        setBackendStatus(response.status === "healthy" ? "connected" : "disconnected");
       } catch (err) {
         console.error("Backend health check failed:", err);
         setBackendStatus("disconnected");
@@ -70,7 +70,7 @@ function Reg() {
     let timer;
     
     if (isAutoAdvancing && algorithmStatus === "completed") {
-      if (currentIteration < iterations_history.length - 1) {
+      if (currentIteration < iteration_history.length - 1) {
         timer = setTimeout(() => {
           setCurrentIteration(prev => prev + 1);
         }, playbackSpeed);
@@ -82,7 +82,7 @@ function Reg() {
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [currentIteration, iterations_history, isAutoAdvancing, playbackSpeed, algorithmStatus]);
+  }, [currentIteration, iteration_history, isAutoAdvancing, playbackSpeed, algorithmStatus]);
   
   // Convert data pairs to points - extracted for reuse
   const getValidPoints = () => {
@@ -122,16 +122,16 @@ function Reg() {
       if (results && results.coefficients && results.intercept !== undefined) {
         drawRegressionLine(ctx, results.coefficients, results.intercept, results.degree || 1, width, height);
       }
-    } else if (iterations_history.length > 0 && currentIteration < iterations_history.length) {
+    } else if (iteration_history.length > 0 && currentIteration < iteration_history.length) {
       // Draw based on the current iteration
-      const iteration = iterations_history[currentIteration];
+      const iteration = iteration_history[currentIteration];
       drawRegressionLine(ctx, iteration.coefficients, iteration.intercept, iteration.degree, width, height);
       
       // Add iteration info overlay
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
       ctx.font = 'bold 14px Inter, sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`Iteration: ${currentIteration + 1} / ${iterations_history.length}`, 10, 20);
+      ctx.fillText(`Iteration: ${currentIteration + 1} / ${iteration_history.length}`, 10, 20);
       ctx.font = 'normal 12px Inter, sans-serif';
       ctx.fillText(`Cost: ${iteration.cost.toFixed(6)}`, 10, 40);
     }
@@ -143,7 +143,7 @@ function Reg() {
       ctx.textAlign = 'center';
       ctx.fillText('Click to add data points', width / 2, height / 2);
     }
-  }, [dataPairs, results, algorithmStatus, currentIteration, iterations_history]);
+  }, [dataPairs, results, algorithmStatus, currentIteration, iteration_history]);
 
   // Draw grid function - match DBScan style
   const drawGrid = (ctx, width, height) => {
@@ -378,17 +378,17 @@ function Reg() {
       setLoading(true);
       setError(null);
       
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/regression/sample_data`, {
-        dataset_type: sampleType,
-        n_samples: sampleCount,
-        noise_level: sampleNoise / 10 // Scale down to match backend expectation
-      });
+      const response = await getPolynomialRegressionSampleData(
+        sampleType,
+        sampleCount,
+        sampleNoise / 10 // Scale down to match backend expectation
+      );
       
-      if (response.data.X && response.data.y) {
+      if (response.X && response.y) {
         // Convert sample data into pairs
-        const pairs = response.data.X.map((x, index) => ({
+        const pairs = response.X.map((x, index) => ({
           x: x.toString(),
-          y: response.data.y[index].toString()
+          y: response.y[index].toString()
         }));
         
         setDataPairs(pairs);
@@ -408,7 +408,7 @@ function Reg() {
   const resetData = () => {
     setDataPairs([{ x: '', y: '' }]);
     setResults(null);
-    setIterationsHistory([]);
+    setIterationHistory([]);
     setCurrentIteration(0);
     setAlgorithmStatus("idle");
     setIsAutoAdvancing(false);
@@ -447,17 +447,19 @@ function Reg() {
       };
 
       console.log('Calling API endpoint with data:', apiData);
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/regression`, apiData);
+      const response = await runPolynomialRegression(apiData);
       
-      if (response.data.error) {
-        throw new Error(response.data.error);
+      if (response.error) {
+        throw new Error(response.error);
       }
       
-      console.log('Results state set to:', response.data);
-      setResults(response.data);
+      console.log('Results state set to:', response);
+      console.log('Iteration history exists:', !!response.iteration_history);
+      console.log('Iteration history length:', response.iteration_history ? response.iteration_history.length : 0);
+      setResults(response);
       
-      if (response.data.iteration_history && response.data.iteration_history.length > 0) {
-        setIterationsHistory(response.data.iteration_history);
+      if (response.iteration_history && response.iteration_history.length > 0) {
+        setIterationHistory(response.iteration_history);
         setCurrentIteration(0);
         setAlgorithmStatus("completed");
       } else {
@@ -466,6 +468,11 @@ function Reg() {
     } catch (err) {
       console.error('Error details:', err);
       setAlgorithmStatus("idle");
+      // Reset results to avoid accessing properties of undefined
+      setResults(null); 
+      
+      // Don't try to access iteration_history here
+      // REMOVE ANY CODE THAT TRIES TO ACCESS response.iteration_history
       
       // Check if the error is related to learning rate
       const errorMessage = err.message || 'An error occurred while running the model.';
@@ -495,11 +502,13 @@ function Reg() {
   };
   
   const goToEnd = () => {
-    setCurrentIteration(iterations_history.length - 1);
+    if (iteration_history && iteration_history.length > 0) {
+      setCurrentIteration(iteration_history.length - 1);
+    }
   };
   
   const stepForward = () => {
-    if (currentIteration < iterations_history.length - 1) {
+    if (currentIteration < iteration_history.length - 1) {
       setCurrentIteration(prev => prev + 1);
     }
   };
@@ -511,7 +520,7 @@ function Reg() {
   };
   
   const goToIteration = (index) => {
-    if (index >= 0 && index < iterations_history.length) {
+    if (iteration_history && iteration_history.length > 0 && index >= 0 && index < iteration_history.length) {
       setCurrentIteration(index);
     }
   };
@@ -934,7 +943,7 @@ function Reg() {
               )}
             </div>
             
-            {algorithmStatus === "completed" && iterations_history.length > 0 && (
+            {algorithmStatus === "completed" && iteration_history.length > 0 && (
               <div className="playback-controls" style={{
                 backgroundColor: 'white',
                 padding: '1rem',
@@ -1013,14 +1022,14 @@ function Reg() {
                   
                   <button
                     onClick={stepForward}
-                    disabled={currentIteration === iterations_history.length - 1}
+                    disabled={currentIteration === iteration_history.length - 1}
                     style={{
                       padding: '0.5rem',
                       backgroundColor: 'transparent',
                       border: 'none',
                       borderRadius: '0.25rem',
                       cursor: 'pointer',
-                      color: currentIteration === iterations_history.length - 1 ? '#d1d5db' : '#374151'
+                      color: currentIteration === iteration_history.length - 1 ? '#d1d5db' : '#374151'
                     }}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'rotate(180deg)' }}>
@@ -1030,14 +1039,14 @@ function Reg() {
                   
                   <button
                     onClick={goToEnd}
-                    disabled={currentIteration === iterations_history.length - 1}
+                    disabled={currentIteration === iteration_history.length - 1}
                     style={{
                       padding: '0.5rem',
                       backgroundColor: 'transparent',
                       border: 'none',
                       borderRadius: '0.25rem',
                       cursor: 'pointer',
-                      color: currentIteration === iterations_history.length - 1 ? '#d1d5db' : '#374151'
+                      color: currentIteration === iteration_history.length - 1 ? '#d1d5db' : '#374151'
                     }}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'rotate(180deg)' }}>
@@ -1062,16 +1071,20 @@ function Reg() {
                       const rect = e.currentTarget.getBoundingClientRect();
                       const x = e.clientX - rect.left;
                       const percentage = x / rect.width;
-                      // Calculate the iteration based on position
-                      const newIteration = Math.floor(percentage * iterations_history.length);
-                      goToIteration(newIteration);
+                      
+                      // Add defensive check here
+                      if (iteration_history && iteration_history.length > 0) {
+                        // Calculate the iteration based on position
+                        const newIteration = Math.floor(percentage * iteration_history.length);
+                        goToIteration(newIteration);
+                      }
                     }}>
                       <div 
                         style={{ 
                           position: 'absolute',
                           top: '0',
                           left: '0',
-                          width: `${(currentIteration / Math.max(1, iterations_history.length - 1)) * 100}%`,
+                          width: `${(currentIteration / Math.max(1, iteration_history.length - 1)) * 100}%`,
                           height: '100%',
                           backgroundColor: '#3b82f6',
                           borderRadius: '4px',
@@ -1083,7 +1096,7 @@ function Reg() {
                     <span style={{ 
                       position: 'absolute',
                       top: '-20px',
-                      left: `${(currentIteration / Math.max(1, iterations_history.length - 1)) * 100}%`,
+                      left: `${(currentIteration / Math.max(1, (iteration_history && iteration_history.length > 0 ? iteration_history.length : 1) - 1)) * 100}%`,
                       transform: 'translateX(-50%)',
                       backgroundColor: '#3b82f6',
                       color: 'white',
@@ -1092,7 +1105,7 @@ function Reg() {
                       fontSize: '0.7rem',
                       fontWeight: '500'
                     }}>
-                      {currentIteration + 1} of {iterations_history.length}
+                      {currentIteration + 1} of {iteration_history ? iteration_history.length : 0}
                     </span>
                   </div>
                   

@@ -1,5 +1,4 @@
 import axios from 'axios';
-// Use environment variable for API URL with fallback to localhost
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 export const getModels = async () => {
@@ -23,9 +22,13 @@ export async function runPolynomialRegression(data) {
   }
 }
 
-export async function getPolynomialRegressionSampleData(count = 30, noise = 5, degree = 2) {
+export async function getPolynomialRegressionSampleData(dataset_type = 'linear', n_samples = 30, noise_level = 0.5) {
   try {
-    const response = await axios.get(`${API_URL}/regression/sample?count=${count}&noise=${noise}&degree=${degree}`);
+    const response = await axios.post(`${API_URL}/regression/sample_data`, {
+      dataset_type: dataset_type,
+      n_samples: n_samples,
+      noise_level: noise_level
+    });
     return response.data;
   } catch (error) {
     console.error('Error getting sample data:', error);

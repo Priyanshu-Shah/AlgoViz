@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 import './ModelPage.css';
-
+const apiUrl= process.env.REACT_APP_API_URL || 'http://127.0.0.1:5000';
 function DBScan() {
     const navigate = useNavigate();
     const [dataPoints, setDataPoints] = useState([]);
@@ -56,7 +56,7 @@ function DBScan() {
     useEffect(() => {
         const checkBackendHealth = async () => {
             try {
-                const response = await axios.get('http://localhost:5000/api/health');
+                const response = await axios.get(`${apiUrl}/health`);
                 setBackendStatus(response.data.status === "healthy" ? "connected" : "disconnected");
             } catch (err) {
                 console.error("Backend health check failed:", err);
@@ -103,7 +103,7 @@ function DBScan() {
             setLoading(true);
             setError(null);
             
-            const response = await axios.post('http://localhost:5000/api/dbscan/sample_data', {
+            const response = await axios.post(`${apiUrl}/dbscan/sample_data`, {
                 dataset_type: datasetType,
                 n_samples: sampleCount,
                 n_clusters: sampleClusters,
@@ -363,7 +363,7 @@ function DBScan() {
             setError(null);
             setAlgorithmStatus("running");
             
-            const response = await axios.post('http://localhost:5000/api/dbscan/run_complete', {
+            const response = await axios.post(`${apiUrl}/dbscan/run_complete`, {
                 points: dataPoints,
                 eps: eps,
                 min_samples: minPoints,

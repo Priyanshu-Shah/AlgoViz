@@ -65,13 +65,13 @@ const toggleTreeEnlargement = () => {
   // For hover effect on visualization
   const [hoveredPoint, setHoveredPoint] = useState(null);
   
-  const apiUrl = 'http://127.0.0.1:5000';
+  const apiUrl = process.env.REACT_APP_API_URL || 'http://127.0.0.1:5000';
 
   // Check backend health when component mounts
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const response = await axios.get(`${apiUrl}/api/health`);
+        const response = await axios.get(`${apiUrl}/health`);
         setBackendStatus(response.data.status === "healthy" ? "connected" : "disconnected");
       } catch (err) {
         console.error("Backend health check failed:", err);
@@ -98,7 +98,7 @@ const toggleTreeEnlargement = () => {
       setLoading(true);
       setShowSampleDataModal(false);
       
-      axios.post(`${apiUrl}/api/dtree/sample_data`, { 
+      axios.post(`${apiUrl}/dtree/sample_data`, { 
         type: activeTab,
         dataset_type: sampleDataType,
         count: sampleCount,
@@ -446,7 +446,7 @@ const trainModel = () => {
   
   console.log("Sending request:", JSON.stringify(requestData, null, 2));
   
-  axios.post(`${apiUrl}/api/dtree/train`, requestData)
+  axios.post(`${apiUrl}/dtree/train`, requestData)
     .then(response => {
       if (response.data.error) {
         setError(response.data.error);
@@ -530,7 +530,7 @@ const trainModel = () => {
     console.log("Sending predict request:", JSON.stringify(requestData, null, 2));
     
     // In the handlePrediction function
-    axios.post(`${apiUrl}/api/dtree/predict`, requestData)
+    axios.post(`${apiUrl}/dtree/predict`, requestData)
     .then(response => {
       if (response.data.error) {
         setError(response.data.error);
