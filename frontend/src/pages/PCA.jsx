@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -35,9 +36,8 @@ function PCA() {
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const health = await checkHealth();
-        console.log("Backend health response:", health);
-        setBackendStatus(health.status === "healthy" ? "connected" : "disconnected");
+        const response = await checkHealth();
+        setBackendStatus(response.status === "healthy" ? "connected" : "disconnected");
       } catch (err) {
         console.error("Backend health check failed:", err);
         setBackendStatus("disconnected");
