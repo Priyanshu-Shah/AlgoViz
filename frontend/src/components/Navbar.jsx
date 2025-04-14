@@ -14,8 +14,8 @@ function Navbar() {
     >
       <div className="navbar-container">
         <Link to="/" className="logo">
-          <span className="logo-text">AlgoViz</span>
           <img src="/logo.png" alt="AlgoViz-Logo" />
+          <span className="logo-text">AlgoViz</span>
         </Link>
         
         <a 
