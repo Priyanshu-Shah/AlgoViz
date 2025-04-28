@@ -274,11 +274,11 @@ If you encounter issues:
 ## 👥 Contributors
 
 - [Darsh](https://github.com/darshpatel1052)
-- [Bhargav](https://github.com/darshpatel1052) 
-- [Priyanshu](https://github.com/darshpatel1052) 
-- [Arun](https://github.com/darshpatel1052) 
-- [Tanisha](https://github.com/darshpatel1052) 
-- [Chanchal](https://github.com/darshpatel1052) 
+- [Bhargav](https://github.com/BhargavShekokar3425) 
+- [Priyanshu](https://github.com/Priyanshu-Shah) 
+- [Arun](https://github.com/ArunCS1005) 
+- [Tanisha](https://github.com/asinat) 
+- [Chanchal](https://github.com/ChanchalYadav12) 
 
 
 
