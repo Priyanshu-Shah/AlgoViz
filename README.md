@@ -6,7 +6,7 @@ An interactive web application for exploring and visualizing machine learning mo
 
 ## 📱 Live Demo
 
-* **Website**: [AlgoViz](https://algoviz-ml.web.app/)
+* **Website**: [AlgoViz](https://algovizz.web.app/)
 
 
 ## 🌟 Features
@@ -31,7 +31,7 @@ An interactive web application for exploring and visualizing machine learning mo
 - Gradient descent visualization
 
 #### Decision Trees
-![Decision Trees Visualization](docs/images/dtree.png)
+![Decision Trees Visualization](docs/images/dtrees.png)
 - Classification and regression trees
 - Interactive tree visualization with entropy/gini values
 - Adjustable tree depth and split criteria
