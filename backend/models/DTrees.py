@@ -221,17 +221,57 @@ class DecisionTreeClassifier:
         node_to_id = {node: i for i, node in enumerate(nodes)}
 
         # Fill arrays based on the node list
-        for node in nodes:
+        for i, node in enumerate(nodes):
             # Add node data
             if node.feature is not None:  # Internal node
                 self.tree_.feature.append(node.feature)
                 self.tree_.threshold.append(node.threshold)
+                
+                # Calculate impurity for this node
+                # Extract the subset of the training data that reaches this node
+                # This is an approximation since we don't store the training data at each node
+                if i == 0:  # Root node
+                    # For root, we need to calculate impurity using the class distribution
+                    counts = node.value[0]
+                    total = np.sum(counts)
+                    if total > 0:
+                        probs = counts / total
+                        if self.criterion == 'gini':
+                            impurity = 1 - np.sum(probs * probs)
+                        else:  # entropy
+                            impurity = -np.sum(probs * np.log2(probs + 1e-10))
+                    else:
+                        impurity = 0.0
+                else:
+                    # For non-root nodes, use the value for impurity calculation
+                    counts = node.value[0]
+                    total = np.sum(counts)
+                    if total > 0:
+                        probs = counts / total
+                        if self.criterion == 'gini':
+                            impurity = 1 - np.sum(probs * probs)
+                        else:  # entropy
+                            impurity = -np.sum(probs * np.log2(probs + 1e-10))
+                    else:
+                        impurity = 0.0
             else:  # Leaf node
                 self.tree_.feature.append(-2)  # -2 indicates leaf in sklearn
                 self.tree_.threshold.append(-2)
+                
+                # Leaf nodes have impurity 0 if they're pure, otherwise calculate it
+                counts = node.value[0]
+                total = np.sum(counts)
+                if total > 0:
+                    probs = counts / total
+                    if self.criterion == 'gini':
+                        impurity = 1 - np.sum(probs * probs)
+                    else:  # entropy
+                        impurity = -np.sum(probs * np.log2(probs + 1e-10))
+                else:
+                    impurity = 0.0
 
             self.tree_.value.append(node.value)
-            self.tree_.impurity.append(0.0)
+            self.tree_.impurity.append(impurity)  # Use calculated impurity
             sample_count = np.sum(node.value)
             self.tree_.n_node_samples.append(int(sample_count))
             self.tree_.weighted_n_node_samples.append(float(sample_count))
@@ -1102,9 +1142,9 @@ def generate_tree_visualization(model, feature_names=None, class_names=None, reg
         dot_file.close()
         
         # Export the decision tree to dot format with limited depth
-        max_depth_to_show = min(5, model.get_depth())  # Limit visualization depth
+        max_depth_to_show = min(8, model.get_depth())  # Limit visualization depth
         
-        # Export to dot format with proper impurity values - Increase precision from 0 to 4
+        # Export to dot format with proper impurity values
         export_graphviz(
             model, 
             out_file=dot_file_path,
@@ -1160,11 +1200,20 @@ def generate_tree_visualization(model, feature_names=None, class_names=None, reg
                         # Remove class information for non-leaf nodes
                         new_label = f'{node_id} [label=<{before_class}{after_class}]'
                         dot_content = dot_content.replace(match.group(0), new_label)
-        
+
+        # Define consistent colors for classes
+        class_colors = {
+            '0': '#3B82F6',  # Blue for class 0
+            '1': '#EF4444',  # Red for class 1
+            '2': '#22C55E',  # Green for class 2
+        }
+
         # Now color only the leaf nodes
         if not regression:
             # For classification trees, color leaf nodes by class
+            # Note: The format of the class in the dot content will be like "class = 1"
             leaf_pattern = r'(\d+) \[label=<.*?class = ([^<>\]]+).*?\]'
+            
             for match in re.finditer(leaf_pattern, dot_content):
                 node_id = match.group(1)
                 
@@ -1172,13 +1221,7 @@ def generate_tree_visualization(model, feature_names=None, class_names=None, reg
                 if node_id in leaf_nodes:
                     class_name = match.group(2).strip()
                     
-                    # Match exact colors from the frontend
-                    class_colors = {
-                        '0': '#3B82F6',  # Blue
-                        '1': '#EF4444',  # Red
-                        '2': '#22C55E',  # Green
-                    }
-                    
+                    # Use consistent color mapping
                     color = class_colors.get(class_name, '#AAAAAA')  # Default to gray if not found
                     
                     # Replace node style to add color
@@ -1322,7 +1365,7 @@ def generate_decision_boundary(tree_model, X, y):
         n_classes = len(unique_classes)
         
         # Define colors for different classes (match frontend colors)
-        colors = ['#22C55E', '#3B82F6', '#EF4444', '#F59E0B', '#8B5CF6']#EF4444
+        colors = ['#3B82F6', '#EF4444', '#22C55E', '#F59E0B', '#8B5CF6']
         # If more classes than colors, use default colormap
         if n_classes <= len(colors):
             cmap_light = ListedColormap(colors[:n_classes])
